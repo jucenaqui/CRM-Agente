@@ -70,7 +70,7 @@ Servidor MCP en `POST /api/mcp` (transporte Streamable HTTP, sin sesiones), con 
   ```
 - **Claude Desktop:** mediante el puente `mcp-remote` (paquete de terceros, requiere Node.js). La pantalla de Ajustes genera el JSON. Los pasos exactos pueden variar según la versión de la aplicación.
 - **claude.ai (web):** **no soportado todavía.** Exige publicar el CRM en internet con HTTPS y un inicio de sesión OAuth que no está implementado.
-- Verificado con el cliente oficial del SDK de MCP sobre HTTP real. No se ha probado con Claude Code ni Claude Desktop propiamente.
+- **Verificado con Claude Code real (2026-10-22):** `claude mcp add --transport http …` conecta (`✔ Connected` en `claude mcp list`), lista y crea registros con los permisos del dueño del token, y las herramientas que modifican (`update_*`) quedan bloqueadas hasta que el usuario las autoriza en Claude Code (p. ej. `--allowedTools` o el aviso de permisos): sin esa autorización no se cambia nada. También con el cliente oficial del SDK de MCP sobre HTTP real. **Claude Desktop** (puente `mcp-remote`) no se ha probado.
 
 ## Variables
 
