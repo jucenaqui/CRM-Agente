@@ -75,3 +75,9 @@ Servidor MCP en `POST /api/mcp` (transporte Streamable HTTP, sin sesiones), con 
 | `AGENT_RATE_LIMIT_MAX` | `60` | Mensajes al asistente por usuario cada 15 min |
 | `MCP_RATE_LIMIT_MAX` | `120` | Peticiones MCP por usuario por minuto |
 | `SETTINGS_ENCRYPTION_KEY` | derivada de `JWT_SECRET` | Cifrado de la clave del cliente |
+
+## Problemas frecuentes
+
+**«Esta clave no está asociada a un workspace» (error 400 de Anthropic).** La clave no pertenece a un workspace concreto (por ejemplo las claves que empiezan por `sk-ant-usr…`, que son de usuario) y la cuenta tiene o ha pasado a tener más de uno, así que Anthropic exige indicar cuál. Solución: crear la clave **dentro de un workspace** (console.anthropic.com → Workspaces → elegir uno → API keys → Create key). Vale tanto para `ANTHROPIC_API_KEY` como para la que guarda el cliente en Ajustes. El CRM lo detecta al guardar la clave y también durante el chat, y lo explica en español. (Ver una sola vez este error en una clave que antes funcionaba suele indicar que se creó un segundo workspace.)
+
+**Comprobado en una prueba real (2026-10-22):** con `customer_then_provider`, al invalidarse la clave del cliente el chat muestra el aviso de cambio a la clave del proveedor y continúa con ella; sin esa política, se detiene sin gastar nada del proveedor.

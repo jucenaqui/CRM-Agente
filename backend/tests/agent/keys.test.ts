@@ -275,6 +275,20 @@ describe('customer key without credit', () => {
     expect((await settings()).fallback.capReached).toBe(true);
   });
 
+  it('explains a "key not scoped to a workspace" error in plain Spanish instead of dumping JSON', async () => {
+    const e = new Anthropic.BadRequestError(
+      400,
+      { type: 'error', error: { type: 'invalid_request_error', message: 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header.' } },
+      '400 {"type":"error"}',
+      new Headers(),
+    );
+    fakeByKey({ [PROVIDER]: e });
+    const { events } = await chat(sales);
+    const last = events[events.length - 1];
+    expect(last).toMatchObject({ type: 'error', code: 'AGENT_KEY_NO_WORKSPACE' });
+    expect(last.message).not.toContain('{');
+  });
+
   it('recovers: once the customer key works again its status goes back to ok', async () => {
     await saveCustomerKey();
     fakeByKey({ [CUSTOMER]: CREDIT() });

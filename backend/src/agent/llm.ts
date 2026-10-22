@@ -30,10 +30,18 @@ export function getAgentLLM(): AgentLLM {
   return override ?? { stream: (params, apiKey) => clientFor(apiKey).beta.messages.stream(params) };
 }
 
-/** Checks a key against Anthropic without generating tokens (lists one model). Throws the SDK error. */
+/**
+ * Checks a key with the same kind of request the chat makes (counting tokens: free, needs no
+ * credit, generates nothing). Listing models is not used: Anthropic answered it with "key not
+ * scoped to a workspace" for a customer's key, so it can reject keys the chat may accept.
+ * Throws the SDK error.
+ */
 export async function validateAnthropicKey(apiKey: string): Promise<void> {
   if (validatorOverride) return validatorOverride(apiKey);
-  await new Anthropic({ apiKey, maxRetries: 0, timeout: 15_000 }).models.list({ limit: 1 });
+  await new Anthropic({ apiKey, maxRetries: 0, timeout: 15_000 }).messages.countTokens({
+    model: 'claude-haiku-5-5',
+    messages: [{ role: 'user', content: 'hola' }],
+  });
 }
 
 /** Test hooks (null restores the real client). */

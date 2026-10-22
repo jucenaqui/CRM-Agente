@@ -168,6 +168,13 @@ router.post('/chat', chatLimiter, async (req, res) => {
   }
 });
 
+/** Anthropic's own explanation of an error, with anything that looks like a key redacted. */
+function anthropicReason(err: unknown): string {
+  const body = (err as { error?: { error?: { message?: unknown } } }).error?.error?.message;
+  const raw = typeof body === 'string' ? body : err instanceof Error ? err.message : 'sin detalle';
+  return raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-…').slice(0, 300);
+}
+
 // ---- Anthropic key settings & usage (admins) ----
 
 const adminOnly = requireRole('admin');
@@ -199,10 +206,26 @@ router.put('/settings/customer-key', adminOnly, async (req, res) => {
   try {
     await validateAnthropicKey(apiKey);
   } catch (err) {
+    // Log what Anthropic answered (status/type only, never the key) so a failure can be diagnosed.
+    const reason = anthropicReason(err);
+    if (process.env.NODE_ENV !== 'test') {
+      const e = err as { status?: number; type?: string };
+      console.error(`customer-key check failed: status=${e.status ?? '-'} type=${e.type ?? '-'} reason=${reason}`);
+    }
     if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
       throw badRequest('Anthropic rechazó la clave: no es válida o no tiene permisos.');
     }
-    throw new HttpError(503, 'ANTHROPIC_UNREACHABLE', 'No se pudo comprobar la clave con Anthropic. Inténtalo de nuevo.');
+    if (/workspace/i.test(reason)) {
+      throw badRequest(
+        'Esta clave no está asociada a un workspace de Anthropic. Créala dentro de un workspace (console.anthropic.com → Workspaces → API keys) y vuelve a pegarla.',
+      );
+    }
+    // Any other 4xx (except rate limiting) is also Anthropic refusing this key/request.
+    if (err instanceof Anthropic.APIError && err.status !== undefined && err.status >= 400 && err.status < 500 && err.status !== 429) {
+      throw badRequest(`Anthropic rechazó la comprobación de la clave (error ${err.status}): ${reason}`);
+    }
+    const status = err instanceof Anthropic.APIError && err.status ? ` (error ${err.status})` : '';
+    throw new HttpError(503, 'ANTHROPIC_UNREACHABLE', `No se pudo comprobar la clave con Anthropic${status}. Inténtalo de nuevo.`);
   }
   saveCustomerKey(apiKey);
   res.json(customerKeyInfo());

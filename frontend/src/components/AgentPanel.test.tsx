@@ -122,6 +122,19 @@ describe('AgentPanel', () => {
     expect(await screen.findByText('hecho')).toBeInTheDocument();
   });
 
+  it('refreshes who pays every time it is opened (e.g. after saving a key in Settings)', async () => {
+    let source: 'provider' | 'customer' = 'provider';
+    baseRoutes({ 'GET /api/agent/models': () => jsonResponse({ ...models, keySource: source }) });
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    expect(await screen.findByText(/usa la clave del proveedor/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /cerrar asistente/i }));
+    source = 'customer';
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    expect(await screen.findByText(/usa tu clave de anthropic/i)).toBeInTheDocument();
+  });
+
   it('explains when the server has no Anthropic key', async () => {
     baseRoutes({ 'GET /api/agent/models': () => jsonResponse({ ...models, configured: false }) });
     const user = userEvent.setup();

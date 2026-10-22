@@ -53,18 +53,31 @@ export function AgentPanel() {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Los modelos se piden al abrir el panel por primera vez.
+  // Modelos y quién paga se piden cada vez que se abre el panel: un admin puede haber cambiado
+  // la clave en Ajustes desde la última vez.
   useEffect(() => {
-    if (!open || info) return;
+    if (!open) return;
+    let alive = true;
     agentApi
       .models()
       .then((r) => {
+        if (!alive) return;
         setInfo(r);
-        const stored = readStoredModel();
-        setModel(r.models.some((m) => m.id === stored) ? stored! : (r.defaultModel ?? r.models[0]?.id ?? ''));
+        setLoadError(null);
+        // Se conserva el modelo ya elegido mientras siga disponible.
+        setModel((current) => {
+          if (r.models.some((m) => m.id === current)) return current;
+          const stored = readStoredModel();
+          return r.models.some((m) => m.id === stored) ? stored! : (r.defaultModel ?? r.models[0]?.id ?? '');
+        });
       })
-      .catch((e: unknown) => setLoadError(errorMessage(e)));
-  }, [open, info]);
+      .catch((e: unknown) => {
+        if (alive) setLoadError(errorMessage(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();

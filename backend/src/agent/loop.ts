@@ -125,6 +125,13 @@ const KEY_MESSAGES: Record<KeyCandidate['source'], Record<'invalid' | 'exhausted
   },
 };
 
+/** Anthropic's own explanation of an error (without the JSON envelope), with key-like text redacted. */
+function anthropicMessage(err: InstanceType<typeof Anthropic.APIError>): string {
+  const inner = (err.error as { error?: { message?: unknown } } | undefined)?.error?.message;
+  const raw = typeof inner === 'string' ? inner : err.message;
+  return raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-…').slice(0, 300);
+}
+
 /** Maps SDK errors to messages a CRM user can act on. */
 export function describeApiError(err: unknown): { code: string; message: string } {
   if (err instanceof Anthropic.AuthenticationError)
@@ -135,8 +142,17 @@ export function describeApiError(err: unknown): { code: string; message: string 
     return { code: 'AGENT_MODEL_UNAVAILABLE', message: 'El modelo elegido no está disponible para esta cuenta de Anthropic.' };
   if (err instanceof Anthropic.RateLimitError)
     return { code: 'AGENT_RATE_LIMITED', message: 'Se alcanzó el límite de uso de la API de Anthropic. Inténtalo en unos minutos.' };
-  if (err instanceof Anthropic.BadRequestError)
-    return { code: 'AGENT_BAD_REQUEST', message: `Anthropic rechazó la petición: ${err.message}` };
+  if (err instanceof Anthropic.BadRequestError) {
+    const detail = anthropicMessage(err);
+    if (/workspace/i.test(detail)) {
+      return {
+        code: 'AGENT_KEY_NO_WORKSPACE',
+        message:
+          'La clave de Anthropic no está asociada a un workspace. Créala dentro de un workspace (console.anthropic.com → Workspaces → API keys) y guárdala de nuevo.',
+      };
+    }
+    return { code: 'AGENT_BAD_REQUEST', message: `Anthropic rechazó la petición: ${detail}` };
+  }
   if (err instanceof Anthropic.APIConnectionError)
     return { code: 'AGENT_UNREACHABLE', message: 'No se pudo conectar con la API de Anthropic.' };
   if (err instanceof Anthropic.APIError)
