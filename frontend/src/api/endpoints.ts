@@ -1,4 +1,4 @@
-import { request } from './client';
+import { ApiError, request } from './client';
 import type {
   Activity,
   ActivityInput,
@@ -71,6 +71,32 @@ export const activitiesApi = {
   setCompleted: (id: number, completed: boolean) =>
     request<Activity>(`/activities/${id}`, { method: 'PATCH', body: { completed } }),
 };
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Comprueba que la respuesta de /dashboard/stats tiene la forma del contrato. Si no (proxy mal
+ * configurado, versión incompatible del servidor...), falla con un error legible en lugar de dejar
+ * que la pantalla se rompa al leer campos que no existen.
+ */
+export function parseStats(raw: unknown): DashboardStats {
+  const r = raw as Partial<DashboardStats> | null;
+  const t = r?.totals as Partial<DashboardStats['totals']> | undefined;
+  const ok =
+    !!t &&
+    isNum(t.companies) &&
+    isNum(t.contacts) &&
+    isNum(t.deals) &&
+    isNum(t.openDealsValue) &&
+    isNum(t.wonDealsValue) &&
+    Array.isArray(r?.dealsByStage) &&
+    r.dealsByStage.every((s) => s && typeof s.stage === 'string' && isNum(s.count) && isNum(s.value)) &&
+    Array.isArray(r?.upcomingActivities);
+  if (!ok) {
+    throw new ApiError(0, 'INVALID_RESPONSE', 'El servidor devolvió el resumen en un formato inesperado. Comprueba que el servidor está actualizado.');
+  }
+  return r as DashboardStats;
+}
+
 export const dashboardApi = {
-  stats: () => request<DashboardStats>('/dashboard/stats'),
+  stats: async () => parseStats(await request<unknown>('/dashboard/stats')),
 };

@@ -6,7 +6,7 @@ Severidad: Crítica / Alta / Media / Baja. Estado: OPEN / FIXED / MITIGATED / WO
 |---|---|---|---|---|
 | BUG-001 | Media | Frontend | Un `website` de empresa sin `http(s)://` da 400 en el backend | FIXED (QA) |
 | BUG-002 | Media (entorno) | Entorno / backend | El Node del sistema pasó a ser 24.20 y el npm global está roto | MITIGATED (backend) + OPEN (entorno de la máquina) |
-| BUG-003 | Baja | Frontend | El Dashboard lanza un TypeError si `/dashboard/stats` responde algo que no cumple el contrato | OPEN (no bloquea) |
+| BUG-003 | Baja | Frontend | El Dashboard lanza un TypeError si `/dashboard/stats` responde algo que no cumple el contrato | FIXED (2026-10-22) |
 
 ---
 
@@ -35,7 +35,8 @@ Severidad: Crítica / Alta / Media / Baja. Estado: OPEN / FIXED / MITIGATED / WO
 - **Esperado:** un estado de error.
 - **Obtenido:** `TypeError: Cannot read properties of undefined (reading 'companies')` en `DashboardPage` y la página se queda en blanco (no hay error boundary).
 - **Sugerencia:** comprobar `data?.totals` o añadir un ErrorBoundary global.
-- **Estado:** OPEN (Baja, no bloquea).
+- **Arreglo (2026-10-22):** `dashboardApi.stats` valida la forma de la respuesta (`parseStats`) y, si no cumple el contrato, falla con «El servidor devolvió el resumen en un formato inesperado…», que la página muestra con el botón Reintentar. Además hay un `ErrorBoundary` global (por pantalla, que se reinicia al cambiar de ruta, y otro en la raíz) para que cualquier fallo de dibujado muestre un aviso con «Reintentar» y «Recargar» en lugar de una página en blanco. Tests en `frontend/src/pages/DashboardPage.test.tsx`.
+- **Estado:** FIXED.
 
 ---
 

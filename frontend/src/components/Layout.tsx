@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ROLE_LABELS, initials } from '../utils/format';
 import { AgentPanel } from './AgentPanel';
+import { ErrorBoundary } from './ErrorBoundary';
 
 function Icon({ d }: { d: string }) {
   return (
@@ -92,7 +93,9 @@ export function Layout({ children }: { children?: ReactNode }) {
           </button>
           <span className="topbar-title">NEWCRM</span>
         </header>
-        <main className="content">{children ?? <Outlet />}</main>
+        <main className="content">
+          <ErrorBoundary resetKey={location.pathname}>{children ?? <Outlet />}</ErrorBoundary>
+        </main>
       </div>
       <AgentPanel />
     </div>
