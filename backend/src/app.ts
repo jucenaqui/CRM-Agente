@@ -5,6 +5,8 @@ import { requireAuth } from './lib/auth.js';
 // Security hook (owned by the Security agent): helmet, CORS, body limit, rate limiting.
 import { applySecurity } from './middleware/security.js';
 import agentRouter from './routes/agent.js';
+import mcpRouter from './routes/mcp.js';
+import tokensRouter from './routes/tokens.js';
 
 const requestLogger: RequestHandler = (req, res, next) => {
   const start = Date.now();
@@ -25,6 +27,8 @@ export function createApp(): Express {
 
   mountCrmRoutes(app);
   app.use('/api/agent', requireAuth, agentRouter);
+  app.use('/api/tokens', requireAuth, tokensRouter);
+  app.use('/api/mcp', mcpRouter); // own auth: personal tokens, not JWT
 
   mountErrorHandlers(app);
   return app;

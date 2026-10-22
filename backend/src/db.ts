@@ -86,6 +86,40 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_agent_conversations_owner ON agent_conversations(ownerId);
   `,
+  // 3: AI agent keys/usage/MCP tokens
+  `
+  CREATE TABLE app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE TABLE agent_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    conversationId INTEGER,
+    model TEXT NOT NULL,
+    keySource TEXT NOT NULL CHECK (keySource IN ('customer','provider')),
+    viaFallback INTEGER NOT NULL DEFAULT 0,
+    inputTokens INTEGER NOT NULL,
+    outputTokens INTEGER NOT NULL,
+    cacheReadTokens INTEGER NOT NULL,
+    cacheWriteTokens INTEGER NOT NULL,
+    costUsd REAL NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+  CREATE INDEX idx_agent_usage_created ON agent_usage(createdAt);
+  CREATE TABLE api_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    tokenHash TEXT NOT NULL UNIQUE,
+    tokenPrefix TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    lastUsedAt TEXT,
+    revokedAt TEXT
+  );
+  CREATE INDEX idx_api_tokens_user ON api_tokens(userId);
+  `,
 ];
 
 export function migrate(db: DB): void {

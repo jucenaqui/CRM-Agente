@@ -47,6 +47,7 @@ export function AgentPanel() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [usage, setUsage] = useState<TurnUsage | null>(null);
   const [history, setHistory] = useState<ConversationSummary[] | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -146,6 +147,9 @@ export function AgentPanel() {
         setItems((prev) => prev.map((it) => (it.kind === 'tool' && it.id === e.id ? { ...it, ok: e.ok } : it)));
         if (e.changed) notifyDataChanged(e.changed);
         break;
+      case 'notice':
+        setNotice(e.message);
+        break;
       case 'done':
         setUsage(e.usage);
         break;
@@ -160,6 +164,7 @@ export function AgentPanel() {
     if (!message || busy || !model) return;
     setInput('');
     setError(null);
+    setNotice(null);
     setUsage(null);
     setItems((prev) => [...prev, { kind: 'user', text: message }]);
     setBusy(true);
@@ -186,6 +191,8 @@ export function AgentPanel() {
 
   const current = info?.models.find((m) => m.id === model);
   const notConfigured = info && !info.configured;
+  const paidBy =
+    info?.keySource === 'customer' ? 'Usa tu clave de Anthropic' : info?.keySource === 'provider' ? 'Usa la clave del proveedor' : null;
 
   if (!open) {
     return (
@@ -225,6 +232,7 @@ export function AgentPanel() {
           {current && (
             <p className="agent-model-desc">
               {current.description} · ${current.inputPrice} / ${current.outputPrice} por millón de tokens (entrada / salida)
+              {paidBy ? ` · ${paidBy}` : ''}
             </p>
           )}
         </div>
@@ -297,6 +305,7 @@ export function AgentPanel() {
                 Pensando…
               </div>
             )}
+            {notice && <div className="alert alert-info">{notice}</div>}
             {error && <div className="alert alert-error">{error}</div>}
             {usage && (
               <p className="agent-usage">

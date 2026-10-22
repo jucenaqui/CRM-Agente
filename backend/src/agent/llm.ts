@@ -4,27 +4,42 @@ export type StreamParams = Parameters<Anthropic['beta']['messages']['stream']>[0
 
 /** The slice of the SDK the agent loop uses; tests swap in a scripted fake. */
 export interface AgentLLM {
-  stream(params: StreamParams): {
+  stream(
+    params: StreamParams,
+    apiKey: string,
+  ): {
     on(event: 'text', listener: (delta: string) => void): unknown;
     finalMessage(): Promise<Anthropic.Beta.BetaMessage>;
   };
 }
 
 let override: AgentLLM | null = null;
-let client: Anthropic | null = null;
+let validatorOverride: ((apiKey: string) => Promise<void>) | null = null;
+const clients = new Map<string, Anthropic>();
 
-/** True when the server has Anthropic credentials (or a test double is installed). */
-export const isAgentConfigured = (): boolean =>
-  override !== null || !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
-
-export function getAgentLLM(): AgentLLM {
-  if (override) return override;
-  client ??= new Anthropic();
-  const c = client;
-  return { stream: (params) => c.beta.messages.stream(params) };
+function clientFor(apiKey: string): Anthropic {
+  let c = clients.get(apiKey);
+  if (!c) {
+    c = new Anthropic({ apiKey });
+    clients.set(apiKey, c);
+  }
+  return c;
 }
 
-/** Test hook: install a fake LLM (null restores the real client). */
+export function getAgentLLM(): AgentLLM {
+  return override ?? { stream: (params, apiKey) => clientFor(apiKey).beta.messages.stream(params) };
+}
+
+/** Checks a key against Anthropic without generating tokens (lists one model). Throws the SDK error. */
+export async function validateAnthropicKey(apiKey: string): Promise<void> {
+  if (validatorOverride) return validatorOverride(apiKey);
+  await new Anthropic({ apiKey, maxRetries: 0, timeout: 15_000 }).models.list({ limit: 1 });
+}
+
+/** Test hooks (null restores the real client). */
 export function setAgentLLM(llm: AgentLLM | null): void {
   override = llm;
+}
+export function setKeyValidator(fn: ((apiKey: string) => Promise<void>) | null): void {
+  validatorOverride = fn;
 }

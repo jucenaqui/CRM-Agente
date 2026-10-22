@@ -11,6 +11,7 @@ import { ContactDetailPage } from './pages/ContactDetailPage';
 import { DealsPage } from './pages/DealsPage';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import { UsersPage } from './pages/UsersPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 /** Árbol de rutas (sin Router, para poder envolverlo con MemoryRouter en tests). */
@@ -50,6 +51,7 @@ export function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

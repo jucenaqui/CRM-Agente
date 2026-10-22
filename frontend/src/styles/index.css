@@ -1403,3 +1403,48 @@ a.kpi:hover {
     border-left: 0;
   }
 }
+
+/* ---------- Ajustes ---------- */
+.badge-ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.badge-bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.settings-key {
+  margin: 12px 0;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+.settings-actions .field {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.settings-usage h3,
+section.card h3 {
+  margin: 18px 0 6px;
+  font-size: 15px;
+}
+.code-block {
+  display: block;
+  margin: 6px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+section.card + section.card {
+  margin-top: 16px;
+}

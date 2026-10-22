@@ -15,6 +15,11 @@ Estado: **v1.0.0 terminada** (2026-10-22). Resumen y pendientes en [RELEASE_NOTE
 | [CHANGELOG_CONTRACT.md](CHANGELOG_CONTRACT.md) | Desviaciones respecto al contrato original |
 | [INTEGRATION_ISSUES.md](INTEGRATION_ISSUES.md) | Problemas de integración backend ↔ frontend y su corrección |
 
+## Asistente IA
+| Documento | Contenido |
+|---|---|
+| [AI_ASSISTANT.md](AI_ASSISTANT.md) | Quién paga (clave del proveedor, del cliente, MCP), políticas de respaldo, consumo y conexión con Claude |
+
 ## Seguridad
 | Documento | Contenido |
 |---|---|

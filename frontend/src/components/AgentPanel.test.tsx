@@ -102,6 +102,26 @@ describe('AgentPanel', () => {
     expect(bodies[1]).toEqual({ message: 'dos', model: 'claude-opus-5-5', conversationId: 42 });
   });
 
+  it('tells the user when the provider key takes over, and who pays', async () => {
+    baseRoutes({
+      'GET /api/agent/models': () => jsonResponse({ ...models, keySource: 'customer' }),
+      'POST /api/agent/chat': () =>
+        sse([
+          { type: 'conversation', id: 1, title: 't', model: 'claude-opus-5-5' },
+          { type: 'notice', code: 'KEY_FALLBACK', message: 'Tu clave de Anthropic no tiene saldo; se está usando la clave del proveedor del CRM.' },
+          { type: 'text', delta: 'hecho' },
+          { type: 'done', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 } },
+        ]),
+    });
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    expect(await screen.findByText(/usa tu clave de anthropic/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/mensaje para el asistente/i), 'hola{Enter}');
+    expect(await screen.findByText(/se está usando la clave del proveedor/i)).toBeInTheDocument();
+    expect(await screen.findByText('hecho')).toBeInTheDocument();
+  });
+
   it('explains when the server has no Anthropic key', async () => {
     baseRoutes({ 'GET /api/agent/models': () => jsonResponse({ ...models, configured: false }) });
     const user = userEvent.setup();

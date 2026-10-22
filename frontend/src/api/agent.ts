@@ -11,6 +11,7 @@ export interface AgentModelInfo {
 
 export interface AgentModelsResponse {
   configured: boolean;
+  keySource: 'customer' | 'provider' | null;
   defaultModel: string | null;
   models: AgentModelInfo[];
 }
@@ -46,10 +47,44 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; changed?: string }
+  | { type: 'notice'; code: string; message: string }
   | { type: 'done'; usage: TurnUsage }
   | { type: 'error'; code: string; message: string };
 
+export type KeyPolicy = 'default' | 'provider_only' | 'customer_only' | 'customer_then_provider';
+export type CustomerKeyStatus = 'unverified' | 'ok' | 'exhausted' | 'invalid';
+
+export interface AgentSettings {
+  policy: KeyPolicy;
+  providerKeyConfigured: boolean;
+  customerKey: { configured: boolean; last4: string | null; status: CustomerKeyStatus | null; statusAt: string | null };
+  effectiveSource: 'customer' | 'provider' | null;
+  fallback: { enabled: boolean; capUsd: number; spentUsd: number; capReached: boolean };
+}
+
+export interface UsageReport {
+  month: string;
+  totals: { source: 'customer' | 'provider'; viaFallback: boolean; messages: number; inputTokens: number; outputTokens: number; costUsd: number }[];
+  byUser: { userId: number | null; name: string | null; source: 'customer' | 'provider'; viaFallback: boolean; costUsd: number; steps: number }[];
+}
+
+export interface ApiToken {
+  id: number;
+  name: string;
+  tokenPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 export const agentApi = {
+  settings: () => request<AgentSettings>('/agent/settings'),
+  saveCustomerKey: (apiKey: string) =>
+    request<AgentSettings['customerKey']>('/agent/settings/customer-key', { method: 'PUT', body: { apiKey } }),
+  removeCustomerKey: () => request<void>('/agent/settings/customer-key', { method: 'DELETE' }),
+  usage: (month?: string) => request<UsageReport>('/agent/usage', { query: { month } }),
+  tokens: () => request<{ data: ApiToken[] }>('/tokens'),
+  createToken: (name: string) => request<ApiToken & { token: string }>('/tokens', { method: 'POST', body: { name } }),
+  revokeToken: (id: number) => request<void>(`/tokens/${id}`, { method: 'DELETE' }),
   models: () => request<AgentModelsResponse>('/agent/models'),
   conversations: () => request<{ data: ConversationSummary[] }>('/agent/conversations'),
   conversation: (id: number) => request<ConversationDetail>(`/agent/conversations/${id}`),

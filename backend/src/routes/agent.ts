@@ -1,9 +1,23 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { CONTEXT_TAG, runAgentTurn, type AgentEvent } from '../agent/loop.js';
-import { isAgentConfigured } from '../agent/llm.js';
+import {
+  customerKeyInfo,
+  fallbackCapReached,
+  fallbackSpentUsd,
+  getFallbackCapUsd,
+  getPolicy,
+  getProviderKey,
+  recordUsage,
+  removeCustomerKey,
+  resolveKeys,
+  saveCustomerKey,
+  setCustomerKeyStatus,
+  usageReport,
+} from '../agent/keys.js';
+import { validateAnthropicKey } from '../agent/llm.js';
 import { defaultModel, enabledModels, findEnabledModel } from '../agent/models.js';
 import {
   createConversation,
@@ -13,7 +27,7 @@ import {
   type AgentMessage,
 } from '../agent/store.js';
 import { describeTool } from '../agent/tools.js';
-import { currentUser } from '../lib/auth.js';
+import { currentUser, requireRole } from '../lib/auth.js';
 import { parseIdParam } from '../lib/crud.js';
 import { HttpError, badRequest, conflict, notFound } from '../lib/errors.js';
 import { validate } from '../lib/validation.js';
@@ -38,8 +52,10 @@ const chatLimiter = rateLimit({
 });
 
 router.get('/models', (_req, res) => {
+  const keys = resolveKeys();
   res.json({
-    configured: isAgentConfigured(),
+    configured: keys.length > 0,
+    keySource: keys[0]?.source ?? null,
     defaultModel: defaultModel()?.id ?? null,
     models: enabledModels().map(({ id, label, description, inputPrice, outputPrice }) => ({
       id,
@@ -86,11 +102,14 @@ router.post('/chat', chatLimiter, async (req, res) => {
   const user = currentUser(req);
   const body = validate(chatSchema, req.body ?? {});
 
-  if (!isAgentConfigured()) {
+  const keys = resolveKeys();
+  if (keys.length === 0) {
     throw new HttpError(
       503,
       'AGENT_NOT_CONFIGURED',
-      'El asistente no está configurado: falta ANTHROPIC_API_KEY en el servidor.',
+      getPolicy() === 'customer_only'
+        ? 'El asistente no está configurado: un administrador debe guardar la clave de Anthropic en Ajustes.'
+        : 'El asistente no está configurado: falta la clave de Anthropic (ANTHROPIC_API_KEY en el servidor, o una clave guardada en Ajustes).',
     );
   }
 
@@ -124,7 +143,22 @@ router.post('/chat', chatLimiter, async (req, res) => {
   try {
     emit({ type: 'conversation', id: conversation.id, title: conversation.title, model: model.id });
     const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
-    await runAgentTurn({ conversation, userText: body.message, model, user, token, emit });
+    await runAgentTurn({
+      conversation,
+      userText: body.message,
+      model,
+      user,
+      token,
+      keys,
+      emit,
+      onSpend: (entry) => recordUsage(entry, { userId: user.id, conversationId: conversation.id, model: model.id }),
+      onKeyFailure: (key, reason) => {
+        if (key.source === 'customer') setCustomerKeyStatus(reason);
+      },
+      onKeySuccess: (key) => {
+        if (key.source === 'customer') setCustomerKeyStatus('ok');
+      },
+    });
   } catch (err) {
     if (process.env.NODE_ENV !== 'test') console.error(err);
     emit({ type: 'error', code: 'AGENT_ERROR', message: 'Error inesperado del asistente.' });
@@ -132,6 +166,56 @@ router.post('/chat', chatLimiter, async (req, res) => {
     busy.delete(conversation.id);
     res.end();
   }
+});
+
+// ---- Anthropic key settings & usage (admins) ----
+
+const adminOnly = requireRole('admin');
+
+router.get('/settings', adminOnly, (_req, res) => {
+  const keys = resolveKeys();
+  const capUsd = getFallbackCapUsd();
+  res.json({
+    policy: getPolicy(),
+    providerKeyConfigured: !!getProviderKey(),
+    customerKey: customerKeyInfo(),
+    effectiveSource: keys[0]?.source ?? null,
+    fallback: {
+      enabled: keys.some((k) => k.viaFallback),
+      capUsd,
+      spentUsd: fallbackSpentUsd(),
+      capReached: fallbackCapReached(),
+    },
+  });
+});
+
+const keySchema = z.strictObject({ apiKey: z.string().trim().regex(/^sk-ant-[A-Za-z0-9_-]{20,}$/, 'No parece una clave de Anthropic (sk-ant-…)') });
+
+router.put('/settings/customer-key', adminOnly, async (req, res) => {
+  const { apiKey } = validate(keySchema, req.body ?? {});
+  if (getPolicy() === 'provider_only') {
+    throw conflict('Este servicio usa siempre la clave del proveedor; no se puede guardar otra.', 'CUSTOMER_KEY_DISABLED');
+  }
+  try {
+    await validateAnthropicKey(apiKey);
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+      throw badRequest('Anthropic rechazó la clave: no es válida o no tiene permisos.');
+    }
+    throw new HttpError(503, 'ANTHROPIC_UNREACHABLE', 'No se pudo comprobar la clave con Anthropic. Inténtalo de nuevo.');
+  }
+  saveCustomerKey(apiKey);
+  res.json(customerKeyInfo());
+});
+
+router.delete('/settings/customer-key', adminOnly, (_req, res) => {
+  removeCustomerKey();
+  res.status(204).end();
+});
+
+router.get('/usage', adminOnly, (req, res) => {
+  const month = typeof req.query.month === 'string' ? req.query.month : undefined;
+  res.json(usageReport(month));
 });
 
 function titleFrom(message: string): string {

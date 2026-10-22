@@ -61,6 +61,10 @@ Si no ejecutas el seed, el **primer usuario que se registre** será `admin`; los
 | `AGENT_MODELS` | todos | (opcional) Modelos que el cliente puede elegir, separados por comas |
 | `AGENT_DEFAULT_MODEL` | `claude-opus-5-5` | (opcional) Modelo preseleccionado |
 | `AGENT_RATE_LIMIT_MAX` | `60` | (opcional) Mensajes al asistente por usuario cada 15 min |
+| `AGENT_KEY_POLICY` | `default` | (opcional) Qué clave paga el asistente: `default`, `provider_only`, `customer_only`, `customer_then_provider` |
+| `AGENT_FALLBACK_MONTHLY_CAP_USD` | `10` | (opcional) Tope mensual del respaldo con la clave del proveedor |
+| `SETTINGS_ENCRYPTION_KEY` | derivada de `JWT_SECRET` | (opcional) Cifrado de la clave de Anthropic que guarda el cliente |
+| `MCP_RATE_LIMIT_MAX` | `120` | (opcional) Peticiones MCP por usuario por minuto |
 
 Ver `backend/.env.example`.
 
@@ -99,7 +103,8 @@ Botón **Asistente** (abajo a la derecha, en todas las pantallas). Abre un chat 
 | `claude-haiku-5-5` | El más barato, tareas sencillas | 0.10 / 0.50 |
 | `claude-fable-5-1` | El más potente, más lento y caro | 10 / 50 |
 
-- **Coste:** tras cada respuesta el panel muestra los tokens y un coste estimado.
+- **Coste:** tras cada respuesta el panel muestra los tokens y un coste estimado. El consumo por clave y por usuario está en **Ajustes** (admins).
+- **Quién paga:** la clave del proveedor (`ANTHROPIC_API_KEY`), la del propio cliente (la guarda un admin en **Ajustes**, cifrada) o ambas con respaldo limitado. También se puede usar sin el chat del CRM, desde Claude Code o Claude Desktop, con un token personal (**MCP**). Todo el detalle en [docs/AI_ASSISTANT.md](docs/AI_ASSISTANT.md).
 - **Historial:** las conversaciones se guardan por usuario (privadas) y se pueden reabrir o borrar.
 - **Puesta en marcha:** crea una clave en https://console.anthropic.com, ponla en `backend/.env` como `ANTHROPIC_API_KEY=...`, reinicia y comprueba con:
   ```bash
@@ -129,6 +134,10 @@ Prefijo `/api`, JSON, cabecera `Authorization: Bearer <token>` (salvo auth y hea
 | GET | `/api/agent/models` | modelos del asistente que el cliente puede elegir |
 | POST | `/api/agent/chat` | mensaje al asistente → respuesta en streaming (SSE) |
 | GET/DELETE | `/api/agent/conversations[/:id]` | historial de conversaciones propias |
+| GET/PUT/DELETE | `/api/agent/settings[/customer-key]` | admin: estado y clave de Anthropic del cliente |
+| GET | `/api/agent/usage` | admin: consumo del asistente por mes |
+| GET/POST/DELETE | `/api/tokens[/:id]` | tokens personales para MCP |
+| POST | `/api/mcp` | servidor MCP (autenticado con token personal) |
 | GET | `/api/health` | `{status:"ok"}` |
 
 - Listas: `?page=1&pageSize=20&search=&sort=&order=asc|desc` → `{data,total,page,pageSize}`.
@@ -148,5 +157,5 @@ Estado al cierre: backend 226 tests (integración, e2e de QA y seguridad); front
 
 ## Documentación
 Índice completo y orden de lectura: [docs/README.md](docs/README.md).
-- [PRD](docs/PRD.md) · [Backlog](docs/BACKLOG.md) · [Contrato](docs/CONTRACT.md) · [Cambios al contrato](docs/CHANGELOG_CONTRACT.md) · [Integración](docs/INTEGRATION_ISSUES.md) · [Release notes](docs/RELEASE_NOTES.md)
+- [Asistente IA y MCP](docs/AI_ASSISTANT.md) · [PRD](docs/PRD.md) · [Backlog](docs/BACKLOG.md) · [Contrato](docs/CONTRACT.md) · [Cambios al contrato](docs/CHANGELOG_CONTRACT.md) · [Integración](docs/INTEGRATION_ISSUES.md) · [Release notes](docs/RELEASE_NOTES.md)
 - Seguridad: [Threat model](docs/security/THREAT_MODEL.md) · [Hallazgos](docs/security/FINDINGS.md) — QA: [Plan](docs/qa/TEST_PLAN.md) · [Bugs](docs/qa/BUGS.md)

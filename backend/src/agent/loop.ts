@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { PublicUser } from '../lib/auth.js';
+import { fallbackCapReached, getFallbackCapUsd, type CustomerKeyStatus, type KeyCandidate, type SpendEntry } from './keys.js';
 import { getAgentLLM } from './llm.js';
 import type { AgentModel } from './models.js';
 import { saveMessages, type AgentMessage, type Conversation } from './store.js';
@@ -11,6 +12,7 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; changed?: string }
+  | { type: 'notice'; code: string; message: string }
   | { type: 'done'; usage: TurnUsage }
   | { type: 'error'; code: string; message: string };
 
@@ -47,7 +49,27 @@ export interface TurnInput {
   model: AgentModel;
   user: PublicUser;
   token: string;
+  /** Anthropic keys to try, in order (see keys.ts resolveKeys). */
+  keys: KeyCandidate[];
   emit: (event: AgentEvent) => void;
+  /** Called after every model step, so spend is logged even if the turn later fails. */
+  onSpend: (entry: SpendEntry) => void;
+  /** A key just failed with this reason / worked. */
+  onKeyFailure?: (key: KeyCandidate, reason: Exclude<CustomerKeyStatus, 'ok' | 'unverified'>) => void;
+  onKeySuccess?: (key: KeyCandidate) => void;
+}
+
+/**
+ * Decides whether an error means "this key can no longer be used" (so another key may be tried)
+ * as opposed to a transient problem (rate limit, outage), which the SDK retries / is reported as is.
+ * Out-of-credit is detected from the 400 message; confirm the wording against a real account.
+ */
+export function classifyKeyFailure(err: unknown): 'invalid' | 'exhausted' | null {
+  if (err instanceof Anthropic.AuthenticationError) return 'invalid';
+  if (err instanceof Anthropic.BadRequestError && /credit balance|billing|purchase credits|plans? (&|and) billing/i.test(err.message)) {
+    return 'exhausted';
+  }
+  return null;
 }
 
 function contextBlock(user: PublicUser): string {
@@ -57,18 +79,50 @@ function contextBlock(user: PublicUser): string {
   return `${CONTEXT_TAG}Fecha y hora actual: ${now.toISOString()} (${local}, zona ${tz}). Usuario: ${user.name} <${user.email}>, rol ${user.role}.</contexto>`;
 }
 
-function addUsage(total: TurnUsage, usage: Anthropic.Beta.BetaUsage, model: AgentModel): void {
+function addUsage(total: TurnUsage, usage: Anthropic.Beta.BetaUsage, model: AgentModel, key: KeyCandidate): SpendEntry {
   const input = usage.input_tokens ?? 0;
   const output = usage.output_tokens ?? 0;
   const read = usage.cache_read_input_tokens ?? 0;
   const write = usage.cache_creation_input_tokens ?? 0;
+  const costUsd = ((input + write * 1.25 + read * 0.1) * model.inputPrice + output * model.outputPrice) / 1_000_000;
   total.inputTokens += input;
   total.outputTokens += output;
   total.cacheReadTokens += read;
   total.cacheWriteTokens += write;
-  total.estimatedCostUsd +=
-    ((input + write * 1.25 + read * 0.1) * model.inputPrice + output * model.outputPrice) / 1_000_000;
+  total.estimatedCostUsd += costUsd;
+  return {
+    source: key.source,
+    viaFallback: key.viaFallback,
+    inputTokens: input,
+    outputTokens: output,
+    cacheReadTokens: read,
+    cacheWriteTokens: write,
+    costUsd,
+  };
 }
+
+const KEY_MESSAGES: Record<KeyCandidate['source'], Record<'invalid' | 'exhausted', { code: string; message: string }>> = {
+  customer: {
+    exhausted: {
+      code: 'AGENT_KEY_EXHAUSTED',
+      message: 'Tu clave de Anthropic no tiene saldo. Recárgalo en console.anthropic.com y vuelve a intentarlo.',
+    },
+    invalid: {
+      code: 'AGENT_KEY_INVALID',
+      message: 'Tu clave de Anthropic ya no es válida. Un administrador debe guardar una nueva en Ajustes.',
+    },
+  },
+  provider: {
+    exhausted: {
+      code: 'AGENT_PROVIDER_EXHAUSTED',
+      message: 'El servicio de IA no tiene saldo disponible ahora mismo. Avisa a tu proveedor del CRM.',
+    },
+    invalid: {
+      code: 'AGENT_PROVIDER_INVALID',
+      message: 'El servicio de IA no está disponible por un problema de configuración. Avisa a tu proveedor del CRM.',
+    },
+  },
+};
 
 /** Maps SDK errors to messages a CRM user can act on. */
 export function describeApiError(err: unknown): { code: string; message: string } {
@@ -94,7 +148,18 @@ export function describeApiError(err: unknown): { code: string; message: string 
  * until it answers without tools. History is persisted after every completed step,
  * append-only, so an interrupted turn never leaves a half-written assistant message.
  */
-export async function runAgentTurn({ conversation, userText, model, user, token, emit }: TurnInput): Promise<void> {
+export async function runAgentTurn({
+  conversation,
+  userText,
+  model,
+  user,
+  token,
+  keys,
+  emit,
+  onSpend,
+  onKeyFailure,
+  onKeySuccess,
+}: TurnInput): Promise<void> {
   const llm = getAgentLLM();
   const messages: AgentMessage[] = [
     ...conversation.messages,
@@ -109,26 +174,70 @@ export async function runAgentTurn({ conversation, userText, model, user, token,
   const persist = () => saveMessages(conversation.id, messages, model.id);
   const usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 };
 
+  const capReached = () =>
+    emit({
+      type: 'error',
+      code: 'AGENT_FALLBACK_CAP',
+      message: `Se alcanzó el límite mensual de uso de respaldo (${getFallbackCapUsd()} USD). Recarga tu clave de Anthropic o avisa a tu proveedor.`,
+    });
+
+  let keyIndex = 0;
   let jsonFailures = 0;
   for (let step = 0; step < MAX_STEPS; ) {
+    const key = keys[keyIndex];
+    if (!key) {
+      emit({
+        type: 'error',
+        code: 'AGENT_NOT_CONFIGURED',
+        message: 'El asistente no está configurado: no hay ninguna clave de Anthropic disponible.',
+      });
+      return;
+    }
+    if (key.viaFallback && fallbackCapReached()) return capReached();
+
     let message: Anthropic.Beta.BetaMessage;
     try {
-      const stream = llm.stream({
-        model: model.id,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        tools: AGENT_TOOLS,
-        messages,
-        output_config: { effort: 'medium' },
-        cache_control: { type: 'ephemeral' },
-        ...(model.serverFallback
-          ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
-          : {}),
-      });
+      const stream = llm.stream(
+        {
+          model: model.id,
+          max_tokens: MAX_TOKENS,
+          system: SYSTEM_PROMPT,
+          tools: AGENT_TOOLS,
+          messages,
+          output_config: { effort: 'medium' },
+          cache_control: { type: 'ephemeral' },
+          ...(model.serverFallback
+            ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
+            : {}),
+        },
+        key.apiKey,
+      );
       stream.on('text', (delta) => emit({ type: 'text', delta }));
       message = await stream.finalMessage();
       jsonFailures = 0;
     } catch (err) {
+      // The key itself is unusable (no credit / revoked): try the next key if the policy allows,
+      // otherwise tell the user exactly what is wrong with this one.
+      const reason = classifyKeyFailure(err);
+      if (reason) {
+        onKeyFailure?.(key, reason);
+        const next = keys[keyIndex + 1];
+        if (next) {
+          if (next.viaFallback && fallbackCapReached()) return capReached();
+          keyIndex++;
+          emit({
+            type: 'notice',
+            code: 'KEY_FALLBACK',
+            message:
+              reason === 'exhausted'
+                ? 'Tu clave de Anthropic no tiene saldo; se está usando la clave del proveedor del CRM.'
+                : 'Tu clave de Anthropic no es válida; se está usando la clave del proveedor del CRM.',
+          });
+          continue;
+        }
+        emit({ type: 'error', ...KEY_MESSAGES[key.source][reason] });
+        return;
+      }
       // With eager input streaming, a tool input that is not parseable JSON rejects
       // finalMessage(); re-issue that step a couple of times. API errors are final.
       if (!(err instanceof Anthropic.APIError) && jsonFailures++ < JSON_RETRIES) continue;
@@ -136,7 +245,8 @@ export async function runAgentTurn({ conversation, userText, model, user, token,
       return;
     }
     step++;
-    addUsage(usage, message.usage, model);
+    onKeySuccess?.(key);
+    onSpend(addUsage(usage, message.usage, model, key));
 
     if (message.stop_reason === 'refusal') {
       emit({

@@ -36,11 +36,13 @@ function reply(content: Block[], stop_reason: Anthropic.Beta.BetaMessage['stop_r
 }
 
 /** Scripted Claude: returns the queued replies in order and records every request. */
+const keysUsed: string[] = [];
 function fakeLLM(replies: Anthropic.Beta.BetaMessage[]) {
   const calls: StreamParams[] = [];
   const llm: AgentLLM = {
-    stream(params) {
+    stream(params, apiKey) {
       calls.push(structuredClone(params));
+      keysUsed.push(apiKey);
       const next = replies.shift();
       if (!next) throw new Error('fake LLM: no more scripted replies');
       const listeners: ((d: string) => void)[] = [];
@@ -90,6 +92,7 @@ let alice: { token: string; user: { id: number } };
 let bob: { token: string; user: { id: number } };
 
 beforeAll(async () => {
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test-provider-key-0123456789';
   admin = await reg('first'); // first registered user becomes admin
   alice = await reg('other');
   bob = await reg('other');
