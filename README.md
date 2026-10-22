@@ -43,6 +43,7 @@ Si no ejecutas el seed, el **primer usuario que se registre** será `admin`; los
 | `npm run build` | Compila backend (`tsc`) y frontend (`vite build`) |
 | `npm test` | Tests de backend y frontend (vitest) |
 | `npm run seed` | Carga datos de ejemplo en la BD |
+| `npm run seed:demo` | Añade un año de actividad de demostración (14 empresas, ~90 deals ganados/perdidos/abiertos, actividades) para ver el dashboard con datos. Se quita con `npm run seed:demo -- --remove` sin tocar tus registros |
 | `npm run dev:backend` / `dev:frontend` | Arranca sólo uno de los dos |
 | `npm run test:backend` / `test:frontend` | Tests de uno de los dos |
 

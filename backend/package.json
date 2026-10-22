@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "seed": "tsx src/seed.ts",
-    "agent:check": "tsx src/agent/check.ts"
+    "agent:check": "tsx src/agent/check.ts",
+    "seed:demo": "tsx src/seed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.1.0",

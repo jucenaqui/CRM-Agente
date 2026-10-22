@@ -13,7 +13,8 @@
     "test": "npm --prefix backend test && npm --prefix frontend test",
     "test:backend": "npm --prefix backend test",
     "test:frontend": "npm --prefix frontend test",
-    "seed": "npm --prefix backend run seed"
+    "seed": "npm --prefix backend run seed",
+    "seed:demo": "npm --prefix backend run seed:demo --"
   },
   "engines": {
     "node": ">=22"
