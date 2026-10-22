@@ -120,6 +120,94 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_api_tokens_user ON api_tokens(userId);
   `,
+  // 4: configurable pipeline (stages, lead sources, loss reasons), real close date, stage history
+  `
+  CREATE TABLE pipeline_stages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    probability INTEGER NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
+    kind TEXT NOT NULL CHECK (kind IN ('open','won','lost')),
+    color TEXT NOT NULL DEFAULT '#868e96',
+    createdAt TEXT NOT NULL
+  );
+  INSERT INTO pipeline_stages (key, name, position, probability, kind, color, createdAt) VALUES
+    ('lead',        'Lead',        1, 10,  'open', '#868e96', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('qualified',   'Calificado',  2, 25,  'open', '#1c7ed6', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('proposal',    'Propuesta',   3, 50,  'open', '#7048e8', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('negotiation', 'Negociación', 4, 75,  'open', '#f08c00', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('won',         'Ganado',      5, 100, 'won',  '#2f9e44', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lost',        'Perdido',     6, 0,   'lost', '#e03131', strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+
+  CREATE TABLE crm_options (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('lead_source','loss_reason')),
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    archivedAt TEXT,
+    createdAt TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX idx_crm_options_name ON crm_options(kind, name COLLATE NOCASE) WHERE archivedAt IS NULL;
+  INSERT INTO crm_options (kind, name, position, createdAt) VALUES
+    ('lead_source', 'Web', 1, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Recomendación', 2, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Redes sociales', 3, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Llamada en frío', 4, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Evento', 5, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Publicidad', 6, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('lead_source', 'Otro', 7, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'Precio', 1, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'Eligió a la competencia', 2, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'Sin presupuesto', 3, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'Sin respuesta', 4, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'No era el momento', 5, strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ('loss_reason', 'Otro', 6, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+
+  -- deals: same table without the fixed list of stages, plus closedAt / sourceId / lostReasonId
+  CREATE TABLE deals_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    value REAL NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    stage TEXT NOT NULL DEFAULT 'lead',
+    contactId INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    companyId INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    ownerId INTEGER NOT NULL REFERENCES users(id),
+    expectedCloseDate TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    closedAt TEXT,
+    sourceId INTEGER REFERENCES crm_options(id) ON DELETE SET NULL,
+    lostReasonId INTEGER REFERENCES crm_options(id) ON DELETE SET NULL
+  );
+  INSERT INTO deals_new (id, title, value, currency, stage, contactId, companyId, ownerId, expectedCloseDate, createdAt, updatedAt, closedAt)
+    SELECT id, title, value, currency, stage, contactId, companyId, ownerId, expectedCloseDate, createdAt, updatedAt,
+           CASE WHEN stage IN ('won','lost') THEN updatedAt END
+    FROM deals;
+  DROP TABLE deals;
+  ALTER TABLE deals_new RENAME TO deals;
+  CREATE INDEX idx_deals_owner ON deals(ownerId);
+  CREATE INDEX idx_deals_stage ON deals(stage);
+  CREATE INDEX idx_deals_closed ON deals(closedAt);
+
+  CREATE TABLE deal_stage_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dealId INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    fromStage TEXT,
+    toStage TEXT NOT NULL,
+    changedAt TEXT NOT NULL,
+    changedBy INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  CREATE INDEX idx_stage_history_deal ON deal_stage_history(dealId);
+  CREATE INDEX idx_stage_history_changed ON deal_stage_history(changedAt);
+  -- existing deals: the only thing known is their current stage, reached (at the latest) when they were created
+  INSERT INTO deal_stage_history (dealId, fromStage, toStage, changedAt, changedBy)
+    SELECT id, NULL, stage, createdAt, ownerId FROM deals;
+
+  ALTER TABLE activities ADD COLUMN completedAt TEXT;
+  UPDATE activities SET completedAt = createdAt WHERE completed = 1;
+  `,
 ];
 
 export function migrate(db: DB): void {
@@ -143,8 +231,13 @@ export function openDb(file = getDbPath()): DB {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = openSqlite(file);
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
+  // Migrations rebuild tables (SQLite cannot drop a CHECK), which is only safe with foreign keys off;
+  // the pragma cannot be changed inside a transaction, so it is switched around the whole run.
+  db.exec('PRAGMA foreign_keys = OFF');
   migrate(db);
+  db.exec('PRAGMA foreign_keys = ON');
+  const broken = db.prepare('PRAGMA foreign_key_check').all();
+  if (broken.length > 0) throw new Error(`Database integrity check failed after migration: ${JSON.stringify(broken.slice(0, 3))}`);
   return db;
 }
 

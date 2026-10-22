@@ -138,8 +138,11 @@ describe('contacts, deals, activities, dashboard', () => {
     expect(dash.status).toBe(200);
     expect(dash.body.totals).toEqual({ companies: 1, contacts: 2, deals: 2, openDealsValue: 1000, wonDealsValue: 500 });
     expect(dash.body.dealsByStage).toHaveLength(6);
-    expect(dash.body.dealsByStage.find((x: { stage: string }) => x.stage === 'proposal')).toEqual({
+    // each stage also carries its name, kind and color (the pipeline is configurable)
+    expect(dash.body.dealsByStage.find((x: { stage: string }) => x.stage === 'proposal')).toMatchObject({
       stage: 'proposal',
+      name: 'Propuesta',
+      kind: 'open',
       count: 1,
       value: 1000,
     });

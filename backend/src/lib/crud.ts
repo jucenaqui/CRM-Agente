@@ -13,7 +13,8 @@ export interface FilterDef {
   /** Column it filters (trusted, defined in code). */
   column: string;
   kind: 'id' | 'bool' | 'enum';
-  values?: readonly string[];
+  /** Allowed values; a function is evaluated per request (for lists that can change, e.g. pipeline stages). */
+  values?: readonly string[] | (() => readonly string[]);
 }
 
 export interface RefDef {
@@ -32,9 +33,16 @@ export interface EntityConfig {
   refs?: readonly RefDef[];
   createSchema: z.ZodType;
   updateSchema: z.ZodType;
-  defaults?: Row;
+  defaults?: Row | (() => Row);
   hasUpdatedAt: boolean;
   mapRow?: (row: Row) => Row;
+  /** Extra column values derived when a record is created (e.g. a close date). May throw to reject. */
+  onCreate?: (data: Row) => Row;
+  /** Extra column values derived when a record changes; `existing` is the stored row before the change. */
+  onUpdate?: (data: Row, existing: Row) => Row;
+  /** Called after the row is stored (e.g. to write history). */
+  afterCreate?: (row: Row, req: Request) => void;
+  afterUpdate?: (before: Row, after: Row, req: Request) => void;
 }
 
 export const parseIdParam = (raw: unknown): number => {
@@ -58,7 +66,8 @@ const parseFilterValue = (f: FilterDef, raw: unknown): unknown => {
     if (['false', '0'].includes(s)) return 0;
     throw badRequest(`Invalid ${f.param} filter (true|false)`);
   }
-  if (!f.values?.includes(s)) throw badRequest(`Invalid ${f.param} filter`, { allowed: f.values });
+  const allowed = typeof f.values === 'function' ? f.values() : f.values;
+  if (!allowed?.includes(s)) throw badRequest(`Invalid ${f.param} filter`, { allowed });
   return s;
 };
 
@@ -98,9 +107,9 @@ export function buildCrud(cfg: EntityConfig) {
     map(getDb().prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).get(id) as Row);
 
   const update = (req: Request, id: number, data: Row): Row => {
-    findOwned(req, id);
+    const existing = findOwned(req, id);
     checkRefs(req, cfg.refs, data);
-    const fields = toSqlValues(data);
+    const fields = toSqlValues({ ...data, ...(cfg.onUpdate?.(data, existing) ?? {}) });
     if (cfg.hasUpdatedAt) fields.updatedAt = nowIso();
     const keys = Object.keys(fields);
     if (keys.length > 0) {
@@ -109,6 +118,7 @@ export function buildCrud(cfg: EntityConfig) {
         .prepare(`UPDATE ${cfg.table} SET ${sets} WHERE id = @__id`)
         .run({ ...toSqlValues(fields), __id: id });
     }
+    if (cfg.afterUpdate) cfg.afterUpdate(existing, getDb().prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).get(id) as Row, req);
     return getMapped(id);
   };
 
@@ -152,10 +162,11 @@ export function buildCrud(cfg: EntityConfig) {
 
   router.post('/', (req, res) => {
     const user = currentUser(req);
-    const data = { ...(cfg.defaults ?? {}), ...(validate(cfg.createSchema, req.body ?? {}) as Row) };
+    const defaults = typeof cfg.defaults === 'function' ? cfg.defaults() : (cfg.defaults ?? {});
+    const data = { ...defaults, ...(validate(cfg.createSchema, req.body ?? {}) as Row) };
     checkRefs(req, cfg.refs, data);
     const now = nowIso();
-    const fields: Row = { ...toSqlValues(data), ownerId: user.id, createdAt: now };
+    const fields: Row = { ...toSqlValues({ ...data, ...(cfg.onCreate?.(data) ?? {}) }), ownerId: user.id, createdAt: now };
     if (cfg.hasUpdatedAt) fields.updatedAt = now;
     const keys = Object.keys(fields);
     const info = getDb()
@@ -163,7 +174,9 @@ export function buildCrud(cfg: EntityConfig) {
         `INSERT INTO ${cfg.table} (${keys.join(', ')}) VALUES (${keys.map((k) => '@' + k).join(', ')})`,
       )
       .run(toSqlValues(fields));
-    res.status(201).json(getMapped(Number(info.lastInsertRowid)));
+    const newId = Number(info.lastInsertRowid);
+    cfg.afterCreate?.(getDb().prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).get(newId) as Row, req);
+    res.status(201).json(getMapped(newId));
   });
 
   router.get('/:id', (req, res) => {

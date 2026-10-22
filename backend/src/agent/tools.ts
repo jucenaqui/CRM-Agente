@@ -4,7 +4,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createCoreApp } from '../core.js';
 import { ACTIVITY_TYPES } from '../routes/activities.js';
-import { STAGES } from '../routes/deals.js';
+import { PERIODS } from '../lib/metrics.js';
+import { getOption, getStageByKey } from '../lib/pipeline.js';
 
 type Tool = Anthropic.Beta.BetaTool;
 type JsonSchema = Tool['input_schema'];
@@ -36,10 +37,12 @@ const dealFields = {
   title: str('Título del deal'),
   value: { type: 'number', minimum: 0, description: 'Importe' },
   currency: str('Moneda ISO 4217 de 3 letras, p. ej. USD, EUR, COP'),
-  stage: { type: 'string', enum: STAGES, description: 'Etapa del embudo' },
+  stage: { type: 'string', description: 'Clave de la etapa del embudo. Las etapas las define cada cliente: consúltalas con get_pipeline' },
   contactId: nullableId('Contacto asociado'),
   companyId: nullableId('Empresa asociada'),
   expectedCloseDate: nullableStr('Fecha prevista de cierre, ISO 8601'),
+  sourceId: nullableId('Origen del lead (id de la lista de get_pipeline)'),
+  lostReasonId: nullableId('Motivo de pérdida (id de la lista de get_pipeline). Sólo para deals en una etapa perdida'),
 };
 const activityFields = {
   type: { type: 'string', enum: ACTIVITY_TYPES, description: 'Tipo de actividad' },
@@ -147,12 +150,30 @@ const SPECS: ToolSpec[] = [
   },
   {
     tool: {
+      name: 'get_pipeline',
+      description:
+        'Configuración de ventas de este CRM: las etapas del embudo (clave, nombre, tipo abierta/ganada/perdida, probabilidad), los orígenes de lead y los motivos de pérdida, con sus ids. Consúltala antes de mover un deal de etapa o de asignar un origen o un motivo de pérdida.',
+      input_schema: object({}),
+    },
+    toRequest: () => ({ method: 'GET', url: '/api/pipeline' }),
+  },
+  {
+    tool: {
+      name: 'get_metrics',
+      description:
+        'Métricas de ventas de un periodo: ganado y perdido, tasa de conversión, ticket medio, ciclo de venta en días, pronóstico ponderado por etapa, ventas por mes, embudo con conversión y días por etapa, rendimiento por origen, motivos de pérdida, deals estancados, actividades y (para administradores) por vendedor. Úsala para preguntas de rendimiento («¿cómo voy?», «¿cuánto cerré este trimestre?»).',
+      input_schema: object({ period: { type: 'string', enum: PERIODS, description: 'Por defecto 90d' } }),
+    },
+    toRequest: ({ period }) => ({ method: 'GET', url: `/api/dashboard/metrics${period ? `?period=${String(period)}` : ''}` }),
+  },
+  {
+    tool: {
       name: 'list_records',
       description:
         'Lista y busca registros de una entidad, paginado. Devuelve {data, total, page, pageSize}. ' +
         'Úsalo también para encontrar el id de un registro a partir de su nombre. ' +
         'Campos de orden: companies(name, industry, createdAt, updatedAt); contacts(firstName, lastName, email, position, createdAt, updatedAt); ' +
-        'deals(title, value, stage, expectedCloseDate, createdAt, updatedAt); activities(subject, type, dueDate, completed, createdAt); users(name, email, role, createdAt). ' +
+        'deals(title, value, stage, expectedCloseDate, closedAt, createdAt, updatedAt); activities(subject, type, dueDate, completed, createdAt); users(name, email, role, createdAt). ' +
         'users sólo está disponible para administradores.',
       input_schema: object(
         {
@@ -165,7 +186,8 @@ const SPECS: ToolSpec[] = [
           companyId: id('Filtra contactos o deals por empresa'),
           contactId: id('Filtra deals o actividades por contacto'),
           dealId: id('Filtra actividades por deal'),
-          stage: { type: 'string', enum: STAGES, description: 'Filtra deals por etapa' },
+          stage: { type: 'string', description: 'Filtra deals por clave de etapa (ver get_pipeline)' },
+          sourceId: id('Filtra deals por origen del lead'),
           completed: { type: 'boolean', description: 'Filtra actividades completadas o pendientes' },
         },
         ['entity'],
@@ -206,18 +228,26 @@ const SPECS: ToolSpec[] = [
   },
   ...createAndUpdate('companies', companyFields, ['name']),
   ...createAndUpdate('contacts', contactFields, ['firstName', 'lastName']),
-  ...createAndUpdate('deals', dealFields, ['title'], ' Por defecto: value 0, currency USD, stage lead.'),
+  ...createAndUpdate('deals', dealFields, ['title'], ' Por defecto: value 0, currency USD y la primera etapa del embudo.'),
   {
     tool: {
       name: 'move_deal_stage',
-      description: 'Mueve un deal a otra etapa del embudo (won = ganado, lost = perdido).',
-      input_schema: object({ id: id('Id del deal'), stage: { type: 'string', enum: STAGES } }, ['id', 'stage']),
+      description:
+        'Mueve un deal a otra etapa del embudo (consulta las etapas con get_pipeline). Al pasarlo a una etapa perdida, indica el motivo con lostReasonId.',
+      input_schema: object(
+        {
+          id: id('Id del deal'),
+          stage: { type: 'string', description: 'Clave de la etapa de destino (ver get_pipeline)' },
+          lostReasonId: nullableId('Motivo de pérdida, sólo si la etapa de destino es perdida'),
+        },
+        ['id', 'stage'],
+      ),
     },
     mutates: 'deals',
-    toRequest: ({ id: recordId, stage }) => ({
+    toRequest: ({ id: recordId, stage, lostReasonId }) => ({
       method: 'PATCH',
       url: `/api/deals/${recordId}/stage`,
-      body: { stage },
+      body: { stage, ...(lostReasonId !== undefined ? { lostReasonId } : {}) },
     }),
   },
   ...createAndUpdate('activities', activityFields, ['type', 'subject'], ' Para marcarla como hecha usa completed: true.'),
@@ -382,11 +412,8 @@ const FIELD_LABEL: Record<string, string> = {
   name: 'nombre', industry: 'sector', website: 'web', phone: 'teléfono', address: 'dirección',
   firstName: 'nombre', lastName: 'apellidos', email: 'email', position: 'cargo', companyId: 'empresa (id)',
   title: 'título', value: 'importe', currency: 'moneda', stage: 'etapa', contactId: 'contacto (id)',
-  expectedCloseDate: 'cierre previsto', type: 'tipo', subject: 'asunto', description: 'descripción',
+  expectedCloseDate: 'cierre previsto', sourceId: 'origen', lostReasonId: 'motivo de pérdida', type: 'tipo', subject: 'asunto', description: 'descripción',
   dueDate: 'vencimiento', completed: 'completada', dealId: 'deal (id)', role: 'rol', password: 'contraseña',
-};
-const STAGE_ES: Record<string, string> = {
-  lead: 'Lead', qualified: 'Calificado', proposal: 'Propuesta', negotiation: 'Negociación', won: 'Ganado', lost: 'Perdido',
 };
 const TYPE_ES: Record<string, string> = { call: 'Llamada', email: 'Email', meeting: 'Reunión', task: 'Tarea', note: 'Nota' };
 const ROLE_ES: Record<string, string> = { admin: 'Administrador', sales: 'Ventas' };
@@ -414,7 +441,8 @@ function shown(field: string, v: unknown): string {
   if (c === null) return '(vacío)';
   if (field === 'password') return '(nueva contraseña)';
   if (typeof c === 'boolean') return c ? 'sí' : 'no';
-  if (field === 'stage') return STAGE_ES[String(c)] ?? String(c);
+  if (field === 'stage') return getStageByKey(String(c))?.name ?? String(c);
+  if (field === 'sourceId' || field === 'lostReasonId') return getOption(Number(c))?.name ?? `#${String(c)}`;
   if (field === 'type') return TYPE_ES[String(c)] ?? String(c);
   if (field === 'role') return ROLE_ES[String(c)] ?? String(c);
   return String(c);
@@ -457,6 +485,8 @@ export async function describeChange(
 const TOOL_LABELS: Record<string, string> = {
   get_current_user: 'Consultando tu usuario',
   get_dashboard: 'Consultando el resumen',
+  get_pipeline: 'Consultando el embudo',
+  get_metrics: 'Calculando métricas',
   list_records: 'Buscando registros',
   get_record: 'Consultando un registro',
   delete_record: 'Borrando un registro',

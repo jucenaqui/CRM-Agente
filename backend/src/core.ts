@@ -8,6 +8,7 @@ import companiesRouter from './routes/companies.js';
 import contactsRouter from './routes/contacts.js';
 import dashboardRouter from './routes/dashboard.js';
 import dealsRouter from './routes/deals.js';
+import pipelineRouter from './routes/pipeline.js';
 import usersRouter from './routes/users.js';
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
@@ -54,6 +55,7 @@ export function mountCrmRoutes(app: Express): void {
   app.use('/api/deals', requireAuth, dealsRouter);
   app.use('/api/activities', requireAuth, activitiesRouter);
   app.use('/api/dashboard', requireAuth, dashboardRouter);
+  app.use('/api/pipeline', requireAuth, pipelineRouter);
 }
 
 /** 404 + contract-format error handler; must be mounted last. */

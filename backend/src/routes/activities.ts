@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { buildCrud, type Row } from '../lib/crud.js';
+import { nowIso } from '../db.js';
 import { boolish, optDate, optId, optText, reqText } from '../lib/validation.js';
 
 export const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'task', 'note'] as const;
@@ -35,6 +36,12 @@ export const activities = buildCrud({
   defaults: { completed: false },
   hasUpdatedAt: false,
   mapRow: mapActivity,
+  // completedAt lets the dashboard count what was done in a period; it follows `completed`.
+  onCreate: (data) => (data.completed ? { completedAt: nowIso() } : {}),
+  onUpdate: (data, existing) => {
+    if (data.completed === undefined || Boolean(data.completed) === Boolean(existing.completed)) return {};
+    return { completedAt: data.completed ? nowIso() : null };
+  },
 });
 
 export default activities.router;

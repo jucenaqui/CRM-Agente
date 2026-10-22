@@ -53,12 +53,18 @@ const insContact = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 const insDeal = db.prepare(
-  `INSERT INTO deals (title, value, currency, stage, contactId, companyId, ownerId, expectedCloseDate, createdAt, updatedAt)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT INTO deals (title, value, currency, stage, contactId, companyId, ownerId, expectedCloseDate, createdAt, updatedAt, closedAt, sourceId, lostReasonId)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
+const insHistory = db.prepare(
+  'INSERT INTO deal_stage_history (dealId, fromStage, toStage, changedAt, changedBy) VALUES (?, ?, ?, ?, ?)',
+);
+const optionId = (kind: string, name: string): number | null =>
+  (db.prepare('SELECT id FROM crm_options WHERE kind = ? AND name = ?').get(kind, name) as { id: number } | undefined)?.id ?? null;
+const ago = (d: number) => new Date(Date.now() - d * day).toISOString();
 const insActivity = db.prepare(
-  `INSERT INTO activities (type, subject, description, dueDate, completed, contactId, dealId, ownerId, createdAt)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT INTO activities (type, subject, description, dueDate, completed, contactId, dealId, ownerId, createdAt, completedAt)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 db.transaction(() => {
@@ -79,17 +85,41 @@ db.transaction(() => {
   ] as const;
   const contactIds = contacts.map((c) => Number(insContact.run(...c, now, now).lastInsertRowid));
 
-  const deals = [
-    ['Acme anvils bulk order', 12000, 'lead', contactIds[0], companyIds[0], adminId, inDays(30)],
-    ['Globex platform license', 48000, 'proposal', contactIds[1], companyIds[1], adminId, inDays(45)],
-    ['Initech TPS migration', 23000, 'qualified', contactIds[2], companyIds[2], salesId, inDays(20)],
-    ['Initech support renewal', 8000, 'won', contactIds[3], companyIds[2], salesId, inDays(-5)],
-    ['Umbrella lab equipment', 65000, 'negotiation', contactIds[4], companyIds[3], salesId, inDays(15)],
-    ['Umbrella pilot', 5000, 'lost', contactIds[4], companyIds[3], salesId, inDays(-10)],
-  ] as const;
-  const dealIds = deals.map(([title, value, stage, contactId, companyId, ownerId, close]) =>
-    Number(insDeal.run(title, value, 'USD', stage, contactId, companyId, ownerId, close, now, now).lastInsertRowid),
-  );
+  // [title, value, stage, contact, company, owner, expected close, created (days ago), closed (days ago), source, loss reason]
+  type SeedDeal = [string, number, string, number | null, number | null, number, string | null, number, number | null, string | null, string | null];
+  const deals: SeedDeal[] = [
+    ['Acme anvils bulk order', 12000, 'lead', contactIds[0], companyIds[0], adminId, inDays(30), 5, null, 'Web', null],
+    ['Globex platform license', 48000, 'proposal', contactIds[1], companyIds[1], adminId, inDays(45), 21, null, 'Recomendación', null],
+    ['Initech TPS migration', 23000, 'qualified', contactIds[2], companyIds[2], salesId, inDays(20), 12, null, 'Evento', null],
+    ['Initech support renewal', 8000, 'won', contactIds[3], companyIds[2], salesId, inDays(-5), 40, 5, 'Recomendación', null],
+    ['Umbrella lab equipment', 65000, 'negotiation', contactIds[4], companyIds[3], salesId, inDays(15), 34, null, 'Publicidad', null],
+    ['Umbrella pilot', 5000, 'lost', contactIds[4], companyIds[3], salesId, inDays(-10), 28, 10, 'Llamada en frío', 'Precio'],
+    // closed in earlier months, so the sales-by-month and conversion metrics have something to show
+    ['Globex onboarding pack', 9000, 'won', contactIds[1], companyIds[1], adminId, null, 75, 48, 'Web', null],
+    ['Acme maintenance contract', 15000, 'won', contactIds[0], companyIds[0], adminId, null, 95, 62, 'Recomendación', null],
+    ['Initech training', 4000, 'won', contactIds[2], companyIds[2], salesId, null, 70, 41, 'Redes sociales', null],
+    ['Hooli prototype', 18000, 'lost', null, null, adminId, null, 80, 52, 'Web', 'Eligió a la competencia'],
+    ['Pied Piper licences', 7000, 'lost', null, null, salesId, null, 66, 33, 'Evento', 'Sin presupuesto'],
+    ['Wonka samples', 3000, 'lost', null, null, salesId, null, 45, 20, 'Redes sociales', 'Sin respuesta'],
+  ];
+  const OPEN_PATH = ['lead', 'qualified', 'proposal', 'negotiation'];
+  const dealIds = deals.map(([title, value, stage, contactId, companyId, ownerId, close, createdAgo, closedAgo, source, reason]) => {
+    const created = ago(createdAgo);
+    const closed = closedAgo === null ? null : ago(closedAgo);
+    const id = Number(
+      insDeal.run(title, value, 'USD', stage, contactId, companyId, ownerId, close, created, closed ?? created, closed, source ? optionId('lead_source', source) : null, reason ? optionId('loss_reason', reason) : null).lastInsertRowid,
+    );
+    // plausible journey through the stages, spread evenly between creation and now (or closing)
+    const end = Date.parse(closed ?? new Date().toISOString());
+    const steps = stage === 'won' ? OPEN_PATH.slice(0, 3) : stage === 'lost' ? OPEN_PATH.slice(0, 2) : OPEN_PATH.slice(0, OPEN_PATH.indexOf(stage) + 1);
+    const finals = stage === 'won' || stage === 'lost' ? [stage] : [];
+    const path = [...steps, ...finals];
+    path.forEach((st, i) => {
+      const at = new Date(Date.parse(created) + ((end - Date.parse(created)) * i) / Math.max(1, path.length - (finals.length ? 1 : 0)));
+      insHistory.run(id, i === 0 ? null : path[i - 1], st, (i === path.length - 1 && closed ? new Date(closed) : at).toISOString(), ownerId);
+    });
+    return id;
+  });
 
   const activities = [
     ['call', 'Intro call with Wile', 'Discuss bulk pricing', inDays(1), 0, contactIds[0], dealIds[0], adminId],
@@ -98,7 +128,7 @@ db.transaction(() => {
     ['task', 'Prepare Umbrella contract', 'Legal review needed', inDays(5), 0, contactIds[4], dealIds[4], salesId],
     ['note', 'Renewal signed', 'Customer happy with support', inDays(-5), 1, contactIds[3], dealIds[3], salesId],
   ] as const;
-  for (const a of activities) insActivity.run(...a, now);
+  for (const a of activities) insActivity.run(...a, now, a[4] ? now : null);
 })();
 
 console.log(`Seed completed (db: ${getDbPath()})`);
