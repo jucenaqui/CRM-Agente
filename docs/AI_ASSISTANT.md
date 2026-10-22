@@ -26,7 +26,7 @@ La define quien administra la instalación (es una variable del servidor, no un 
 - Solo se cambia de clave ante **saldo agotado** o **clave inválida/revocada**. Los fallos pasajeros (límite de velocidad, caída de Anthropic) no activan el respaldo.
 - El estado de la clave (`Funciona`, `Sin saldo`, `No válida`) se ve en Ajustes y se corrige solo cuando vuelve a funcionar.
 
-> **Pendiente de comprobar con una cuenta real:** el aviso de «saldo agotado» se detecta por el texto del error 400 de Anthropic (`credit balance…`). Está cubierto con tests usando un error simulado, pero conviene probar una vez con una cuenta sin saldo.
+> **Verificado con una cuenta real sin saldo (2026-10-22):** Anthropic responde 400 `invalid_request_error` con «Your credit balance is too low to access the Anthropic API…», que es el texto que se detecta. Listar modelos (`agent:check`) funciona aunque no haya saldo; generar texto no.
 
 ## Registro de consumo y facturación
 
