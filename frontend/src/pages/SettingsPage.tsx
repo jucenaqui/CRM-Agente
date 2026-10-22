@@ -441,8 +441,9 @@ function McpSection() {
 
       <h3>Claude Desktop</h3>
       <p className="muted">
-        Añade esto a su archivo de configuración (Ajustes → Desarrollador → Editar configuración). Usa el puente <code>mcp-remote</code>, que
-        requiere Node.js; los pasos exactos pueden variar según la versión de la aplicación.
+        1. Cierra Claude Desktop del todo (icono de la bandeja del sistema → Salir). 2. Abre Configuración → Desarrollador → <strong>Editar configuración</strong>. 3.
+        Si el archivo ya tiene contenido, <strong>añade solo la clave «mcpServers»</strong> (y no borres lo demás); si está vacío, pega todo. 4. Vuelve a abrir
+        Claude Desktop. Usa el puente <code>mcp-remote</code>, que requiere Node.js; los pasos exactos pueden variar según la versión de la aplicación.
       </p>
       <pre className="code-block">{desktop}</pre>
       <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copy(desktop)}>
