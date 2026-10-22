@@ -84,7 +84,8 @@ function addUsage(total: TurnUsage, usage: Anthropic.Beta.BetaUsage, model: Agen
   const output = usage.output_tokens ?? 0;
   const read = usage.cache_read_input_tokens ?? 0;
   const write = usage.cache_creation_input_tokens ?? 0;
-  const costUsd = ((input + write * 1.25 + read * 0.1) * model.inputPrice + output * model.outputPrice) / 1_000_000;
+  // Cache writes at 1.25x input (5-minute cache); reads at the model's own cache-read price.
+  const costUsd = ((input + write * 1.25) * model.inputPrice + read * model.cacheReadPrice + output * model.outputPrice) / 1_000_000;
   total.inputTokens += input;
   total.outputTokens += output;
   total.cacheReadTokens += read;

@@ -28,6 +28,19 @@ La define quien administra la instalación (es una variable del servidor, no un 
 
 > **Verificado con una cuenta real sin saldo (2026-10-22):** Anthropic responde 400 `invalid_request_error` con «Your credit balance is too low to access the Anthropic API…», que es el texto que se detecta. Listar modelos (`agent:check`) funciona aunque no haya saldo; generar texto no.
 
+## Coste medido con la API real (2026-10-22)
+
+Primer mensaje de una conversación, con una consulta sencilla (1-2 herramientas), a precios de lista:
+
+| Modelo | Coste aproximado |
+|---|---|
+| Haiku 5.5 | 0,001 USD |
+| Sonnet 5.5 | 0,016 USD |
+| Opus 5.5 | 0,04 USD |
+| Fable 5.1 | 0,08 USD |
+
+Casi todo es la **escritura de caché** de las instrucciones y las 16 herramientas (~5.600 tokens), que se vuelve a pagar cuando pasan más de 5 minutos entre mensajes. Los mensajes siguientes dentro de la misma conversación cuestan bastante menos. Son estimaciones calculadas a partir de los tokens que informa Anthropic; la factura real está en console.anthropic.com. Los precios de lectura de caché de cada modelo salen de la documentación; el de Haiku 5.5 (0,01 USD) y el recargo de escritura del 25 % son supuestos habituales no confirmados para estos modelos.
+
 ## Registro de consumo y facturación
 
 Cada paso del asistente se guarda en `agent_usage`: usuario, modelo, tokens, coste estimado (a precio de lista del modelo), qué clave se usó y si fue respaldo. Los admins lo ven en **Ajustes → Consumo** (por clave y por usuario) y por API: `GET /api/agent/usage?month=2026-10`. Para facturar al cliente, suma las filas con clave `provider`; el coste es una estimación, no la factura de Anthropic.

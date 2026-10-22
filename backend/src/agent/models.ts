@@ -13,6 +13,8 @@ export interface AgentModel {
   /** USD per 1M tokens (Claude API list price). */
   inputPrice: number;
   outputPrice: number;
+  /** USD per 1M tokens read from the prompt cache (varies per model, not a fixed % of input). */
+  cacheReadPrice: number;
   /** Server-side refusal fallback (`fallbacks: "default"`) is available for this model. */
   serverFallback: boolean;
 }
@@ -24,6 +26,7 @@ export const MODEL_CATALOG: readonly AgentModel[] = [
     description: 'Equilibrio recomendado: muy capaz para tareas de varios pasos.',
     inputPrice: 4,
     outputPrice: 20,
+    cacheReadPrice: 0.2,
     serverFallback: true,
   },
   {
@@ -32,6 +35,7 @@ export const MODEL_CATALOG: readonly AgentModel[] = [
     description: 'Rápido y más económico para el trabajo diario.',
     inputPrice: 2,
     outputPrice: 10,
+    cacheReadPrice: 0.2,
     serverFallback: true,
   },
   {
@@ -40,6 +44,7 @@ export const MODEL_CATALOG: readonly AgentModel[] = [
     description: 'El más rápido y barato, para consultas y cambios sencillos.',
     inputPrice: 0.1,
     outputPrice: 0.5,
+    cacheReadPrice: 0.01,
     serverFallback: false,
   },
   {
@@ -48,6 +53,7 @@ export const MODEL_CATALOG: readonly AgentModel[] = [
     description: 'El más potente, para análisis complejos. Más lento y caro.',
     inputPrice: 10,
     outputPrice: 50,
+    cacheReadPrice: 0.25,
     serverFallback: true,
   },
 ];
