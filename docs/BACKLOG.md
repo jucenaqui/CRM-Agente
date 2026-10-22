@@ -73,5 +73,5 @@ _Última revisión: 2026-10-22 (cierre) — los 4 agentes DONE; cierre del PM ve
 | POST-2 | SEC-004 (Media) | Avisar con `console.warn` (o exigir) si no hay `JWT_SECRET` fuera de test | Backend | DONE |
 | POST-3 | SEC-005 (Media) | El seed debe abortar con `NODE_ENV=production` salvo flag explícito | Backend | DONE |
 | POST-4 | BUG-003 (Baja) | Dashboard tolerante a un `stats` malformado | Frontend | DONE |
-| POST-5 | BUG-002 (entorno) | Reparar el Node/npm de la máquina (`nvm uninstall 22.12.0 && nvm install 22.12.0`); hoy fallan `npm install/ls/audit` | Usuario | TODO |
+| POST-5 | BUG-002 (entorno) | Node/npm de la máquina reparados (Node 22.12 / npm 10.9) | Usuario | DONE |
 | POST-6 | INT-1..4 | Correcciones de integración aplicadas por el PM (ver `docs/INTEGRATION_ISSUES.md`) | PM | DONE |

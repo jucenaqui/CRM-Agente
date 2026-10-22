@@ -5,7 +5,7 @@ Severidad: Crítica / Alta / Media / Baja. Estado: OPEN / FIXED / MITIGATED / WO
 | ID | Sev. | Área | Título | Estado |
 |---|---|---|---|---|
 | BUG-001 | Media | Frontend | Un `website` de empresa sin `http(s)://` da 400 en el backend | FIXED (QA) |
-| BUG-002 | Media (entorno) | Entorno / backend | El Node del sistema pasó a ser 24.20 y el npm global está roto | MITIGATED (backend) + OPEN (entorno de la máquina) |
+| BUG-002 | Media (entorno) | Entorno / backend | El Node del sistema pasó a ser 24.20 y el npm global estaba roto | FIXED (2026-10-22: Node 22.12 / npm 10.9 reinstalados; install, ls, audit y run funcionan) |
 | BUG-003 | Baja | Frontend | El Dashboard lanza un TypeError si `/dashboard/stats` responde algo que no cumple el contrato | FIXED (2026-10-22) |
 
 ---
@@ -27,7 +27,8 @@ Severidad: Crítica / Alta / Media / Baja. Estado: OPEN / FIXED / MITIGATED / WO
 - **Mitigación (Backend):** `src/sqlite.ts` vuelve automáticamente a `node:sqlite` cuando el binario nativo no carga. QA lo ha verificado y los 226 tests del backend pasan tanto con Node 24.20 (driver `node:sqlite`) como con Node 22.12 (driver `better-sqlite3`).
 - **Pendiente (entorno, fuera del proyecto):** reparar Node/npm con `nvm uninstall 22.12.0 && nvm install 22.12.0 && nvm use 22.12.0`, o desinstalar el MSI de Node 24. Mientras tanto se puede usar Node 22.12 portable (zip oficial de nodejs.org, comprobado con SHA256). Así ejecutó QA `npm test` y `npm run build` en la raíz.
 - **Precisión (2026-10-22, coordinador):** con el npm 11.19 del sistema, `npm --version`, `npm run build` y `npm test` sí funcionan; fallan los comandos que usan la caché de paquetes (`npm install`, `npm ls`, `npm audit`) porque `minipass-flush` no carga (`cacache/lib/content/write.js`).
-- **Estado:** MITIGATED en el proyecto. La reparación de la máquina sigue OPEN.
+- **Resuelto (2026-10-22):** se reinstaló Node 22.12.0 con npm 10.9.0 en la máquina; `npm install`, `npm ls`, `npm audit` y `npm run` funcionan. El fallback a `node:sqlite` del backend se mantiene por si se vuelve a Node 24.
+- **Estado:** FIXED.
 
 ## BUG-003: el Dashboard no tolera un `stats` malformado
 - **Severidad:** Baja. Sólo pasa si el backend incumple el contrato, por ejemplo con un proxy mal configurado que devuelve otra cosa.

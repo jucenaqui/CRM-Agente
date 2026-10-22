@@ -7,7 +7,7 @@ CRM ligero para equipos comerciales pequeños: empresas, contactos, oportunidade
 - Windows, macOS o Linux. `better-sqlite3` usa binarios precompilados; si no hay uno para tu plataforma necesitarás herramientas de compilación (Python + compilador C++ / "Desktop development with C++" en Windows).
 
 ## Problemas conocidos de entorno
-Si `npm` falla con `Class extends value undefined is not a constructor or null`, la instalación de Node/npm de la máquina está dañada (por ejemplo, un MSI de Node 24 escrito sobre la carpeta de nvm). Afecta a `npm install`, `npm ls` y `npm audit`; `npm run` puede seguir funcionando. Repárala con `nvm uninstall 22.12.0 && nvm install 22.12.0 && nvm use 22.12.0`, o usa una distribución portable de Node 22 anteponiendo su carpeta al `PATH`.
+Si `npm` falla con `Class extends value undefined is not a constructor or null`, la instalación de Node/npm está dañada (por ejemplo, un instalador de Node 24 escrito sobre la carpeta de nvm). Afecta a `npm install`, `npm ls` y `npm audit`. Repárala con `nvm uninstall 22.12.0 && nvm install 22.12.0 && nvm use 22.12.0`.
 
 ## Instalación
 ```bash

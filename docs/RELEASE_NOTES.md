@@ -51,7 +51,6 @@ Comandos ejecutados desde la raíz en PowerShell con **Node 22.12.0 / npm 10.9.0
 | ID | Severidad | Descripción | Dueño |
 |---|---|---|---|
 | SEC-006..011 | Baja | Riesgos aceptados: enumeración de emails en el registro, token en `localStorage`, sin revocación de JWT, límite de 72 bytes de bcrypt y rate limit en memoria. | — |
-| BUG-002 | Entorno | En la máquina, la carpeta nvm `v22.12.0` contiene ahora Node 24.20 con un npm 11.19 dañado: `npm install`, `npm ls` y `npm audit` fallan con "Class extends value undefined…" (`npm run` y `npm test` sí funcionan). Para repararlo: `nvm uninstall 22.12.0 && nvm install 22.12.0 && nvm use 22.12.0`. El backend funciona con Node 22 (`better-sqlite3`) y con Node 24 (fallback a `node:sqlite`). | Usuario |
 | — | Resuelto | `docs/qa/REPORT.md` creado por el coordinador con autorización del usuario (el permiso se lo había bloqueado al agente QA). Ver también `docs/status/qa.md` y `docs/qa/BUGS.md`. | Usuario |
 | — | Limitación | El Kanban y los selects cargan como máximo 100 registros (`MAX_PAGE_SIZE`). Con más, el Kanban muestra un aviso. | — |
 
@@ -64,3 +63,5 @@ npm run dev          # http://localhost:5173  ·  admin@crm.local / Admin123!
 
 ## Actualización 2026-10-22: seguridad
 SEC-003 (react-router 7, `npm audit` sin vulnerabilidades), SEC-004 (aviso de `JWT_SECRET` ausente) y SEC-005 (el seed no corre en producción salvo `SEED_ALLOW_PRODUCTION=1`) quedaron resueltos, igual que BUG-003 (el dashboard ya no se queda en blanco con datos mal formados). Detalle en `docs/security/FINDINGS.md`.
+
+BUG-002 (npm roto en la máquina de desarrollo) quedó resuelto el 2026-10-22 al reinstalar Node 22.12 / npm 10.9.
