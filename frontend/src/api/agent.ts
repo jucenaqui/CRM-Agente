@@ -27,7 +27,9 @@ export interface ConversationSummary {
 export type TranscriptItem =
   | { kind: 'user'; text: string }
   | { kind: 'assistant'; text: string }
-  | { kind: 'tool'; id: string; name: string; label: string; ok: boolean | null };
+  | { kind: 'tool'; id: string; name: string; label: string; ok: boolean | null }
+  /** Sólo en el cliente: confirmación de un borrado que pidió el asistente. */
+  | { kind: 'confirm'; callId: string; label: string; status: 'pending' | 'approved' | 'denied' | 'expired' };
 
 export interface ConversationDetail extends ConversationSummary {
   items: TranscriptItem[];
@@ -47,6 +49,8 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; changed?: string }
+  | { type: 'confirm_required'; callId: string; label: string }
+  | { type: 'confirm_resolved'; callId: string; decision: 'approved' | 'denied' | 'expired' }
   | { type: 'notice'; code: string; message: string }
   | { type: 'done'; usage: TurnUsage }
   | { type: 'error'; code: string; message: string };
@@ -89,6 +93,9 @@ export const agentApi = {
   conversations: () => request<{ data: ConversationSummary[] }>('/agent/conversations'),
   conversation: (id: number) => request<ConversationDetail>(`/agent/conversations/${id}`),
   removeConversation: (id: number) => request<void>(`/agent/conversations/${id}`, { method: 'DELETE' }),
+  /** Respuesta de la persona a una confirmación de borrado pendiente. */
+  confirm: (callId: string, approve: boolean) =>
+    request<void>('/agent/chat/confirm', { method: 'POST', body: { callId, approve } }),
 };
 
 export interface ChatInput {

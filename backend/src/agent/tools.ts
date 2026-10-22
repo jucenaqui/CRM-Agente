@@ -335,6 +335,31 @@ function safeJson(s: string): unknown {
   }
 }
 
+const RECORD_NAME: Record<string, (r: Record<string, unknown>) => string> = {
+  companies: (r) => `empresa «${String(r.name)}»`,
+  contacts: (r) => `contacto «${String(r.firstName)} ${String(r.lastName)}»`,
+  deals: (r) => `deal «${String(r.title)}»${typeof r.value === 'number' ? ` (${r.value} ${String(r.currency ?? '')})`.replace(' )', ')') : ''}`,
+  activities: (r) => `actividad «${String(r.subject)}»`,
+  users: (r) => `usuario «${String(r.name)}» <${String(r.email)}>`,
+};
+
+/**
+ * Human-readable description of the record a delete_record call targets, e.g. `contacto «Juan Pérez»`.
+ * Null when the call is invalid or the record is not visible to the user (the delete itself will then fail).
+ */
+export async function describeRecord(input: unknown, token: string): Promise<string | null> {
+  const { entity, id } = (input ?? {}) as { entity?: string; id?: number };
+  const name = entity ? RECORD_NAME[entity] : undefined;
+  if (!name) return null;
+  const got = await executeTool('get_record', { entity, id }, token);
+  if (!got.ok) return null;
+  try {
+    return `${name(JSON.parse(got.content) as Record<string, unknown>)} (id ${id})`;
+  } catch {
+    return null;
+  }
+}
+
 const TOOL_LABELS: Record<string, string> = {
   get_current_user: 'Consultando tu usuario',
   get_dashboard: 'Consultando el resumen',

@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { DATA_CHANGED_EVENT } from '../api/agent';
@@ -133,6 +133,78 @@ describe('AgentPanel', () => {
     source = 'customer';
     await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
     expect(await screen.findByText(/usa tu clave de anthropic/i)).toBeInTheDocument();
+  });
+
+  it('asks before deleting: shows what will be deleted, waits for the button and sends the answer', async () => {
+    const enc = new TextEncoder();
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const push = (e: unknown) => stream.enqueue(enc.encode(`data: ${JSON.stringify(e)}
+
+`));
+    let answer: Record<string, unknown> | undefined;
+    baseRoutes({
+      'POST /api/agent/chat': () =>
+        new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      'POST /api/agent/chat/confirm': (_u, init) => {
+        answer = JSON.parse(String(init.body));
+        push({ type: 'confirm_resolved', callId: 'tu_1', decision: 'approved' });
+        push({ type: 'tool_end', id: 'tu_1', name: 'delete_record', ok: true, changed: 'companies' });
+        push({ type: 'text', delta: 'Borrada.' });
+        push({ type: 'done', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 } });
+        stream.close();
+        return new Response(null, { status: 204 });
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    await screen.findByLabelText('Modelo');
+    await user.type(screen.getByLabelText(/mensaje para el asistente/i), 'borra Acme{Enter}');
+    await waitFor(() => expect(stream).toBeDefined());
+    push({ type: 'conversation', id: 3, title: 't', model: 'claude-opus-5-5' });
+    push({ type: 'tool_start', id: 'tu_1', name: 'delete_record', label: 'Borrando un registro' });
+    push({ type: 'confirm_required', callId: 'tu_1', label: 'empresa «Acme» (id 4)' });
+
+    const box = await screen.findByRole('group', { name: /confirmar borrado/i });
+    expect(within(box).getByText('empresa «Acme» (id 4)')).toBeInTheDocument();
+    expect(within(box).getByText(/no se puede deshacer/i)).toBeInTheDocument();
+    expect(answer).toBeUndefined(); // nothing is sent until the person decides
+
+    await user.click(within(box).getByRole('button', { name: 'Borrar' }));
+    expect(await screen.findByText('Borrada.')).toBeInTheDocument();
+    expect(answer).toEqual({ callId: 'tu_1', approve: true });
+    expect(screen.getByText(/borrado confirmado/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Borrar' })).not.toBeInTheDocument(); // buttons disappear once answered
+  });
+
+  it('sends approve:false when the person cancels', async () => {
+    const enc = new TextEncoder();
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const push = (e: unknown) => stream.enqueue(enc.encode(`data: ${JSON.stringify(e)}
+
+`));
+    let answer: Record<string, unknown> | undefined;
+    baseRoutes({
+      'POST /api/agent/chat': () =>
+        new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      'POST /api/agent/chat/confirm': (_u, init) => {
+        answer = JSON.parse(String(init.body));
+        push({ type: 'confirm_resolved', callId: 'tu_2', decision: 'denied' });
+        push({ type: 'done', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 } });
+        stream.close();
+        return new Response(null, { status: 204 });
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    await screen.findByLabelText('Modelo');
+    await user.type(screen.getByLabelText(/mensaje para el asistente/i), 'borra Acme{Enter}');
+    await waitFor(() => expect(stream).toBeDefined());
+    push({ type: 'confirm_required', callId: 'tu_2', label: 'contacto «Juan Pérez» (id 1)' });
+    await user.click(within(await screen.findByRole('group', { name: /confirmar borrado/i })).getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByText(/borrado cancelado/i)).toBeInTheDocument();
+    expect(answer).toEqual({ callId: 'tu_2', approve: false });
   });
 
   it('explains when the server has no Anthropic key', async () => {

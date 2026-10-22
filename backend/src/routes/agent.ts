@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
+import { decide } from '../agent/confirm.js';
 import { CONTEXT_TAG, runAgentTurn, type AgentEvent } from '../agent/loop.js';
 import {
   customerKeyInfo,
@@ -136,6 +137,8 @@ router.post('/chat', chatLimiter, async (req, res) => {
 
   // The turn runs to completion even if the browser disconnects, so the stored
   // history always ends on a consistent step.
+  const gone = new AbortController();
+  res.on('close', () => gone.abort());
   const emit = (event: AgentEvent) => {
     if (!res.writableEnded && !res.destroyed) res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
@@ -151,6 +154,7 @@ router.post('/chat', chatLimiter, async (req, res) => {
       token,
       keys,
       emit,
+      signal: gone.signal,
       onSpend: (entry) => recordUsage(entry, { userId: user.id, conversationId: conversation.id, model: model.id }),
       onKeyFailure: (key, reason) => {
         if (key.source === 'customer') setCustomerKeyStatus(reason);
@@ -239,6 +243,15 @@ router.delete('/settings/customer-key', adminOnly, (_req, res) => {
 router.get('/usage', adminOnly, (req, res) => {
   const month = typeof req.query.month === 'string' ? req.query.month : undefined;
   res.json(usageReport(month));
+});
+
+const confirmSchema = z.strictObject({ callId: z.string().min(1).max(200), approve: z.boolean() });
+
+/** The person's answer to a `confirm_required` event (see agent/confirm.ts). */
+router.post('/chat/confirm', (req, res) => {
+  const { callId, approve } = validate(confirmSchema, req.body ?? {});
+  if (!decide(currentUser(req).id, callId, approve)) throw notFound('No hay ninguna confirmación pendiente');
+  res.status(204).end();
 });
 
 function titleFrom(message: string): string {

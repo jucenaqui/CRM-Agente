@@ -8,6 +8,10 @@ NEWCRM se despliega **una instalación por cliente** (cada cliente tiene su serv
 | **Clave del cliente** | El cliente, directamente a Anthropic | Panel «Asistente»; un admin guarda su clave en **Ajustes** |
 | **MCP** | El cliente, con su suscripción de Claude | Claude Code / Claude Desktop con un token personal (Ajustes → Conexión con Claude) |
 
+## Borrados: siempre con confirmación
+
+En el chat del CRM el asistente **no puede borrar nada por su cuenta**. Antes de ejecutar un borrado, el chat muestra qué se va a borrar («empresa «Acme» (id 4)») con los botones **Borrar** y **Cancelar**. Está forzado en el servidor, no depende de las instrucciones del modelo. Sin respuesta en 5 minutos (`AGENT_CONFIRM_TIMEOUT_MS`) o si se cierra la pestaña, no se borra nada. Además, si una petición cambiaría varios registros sin nombrarlos, el asistente primero los lista y pregunta. Por MCP, la confirmación la gestiona la aplicación del cliente (Claude Code y Desktop piden permiso por herramienta; el servidor marca `delete_record` como destructiva).
+
 ## Qué clave se usa (`AGENT_KEY_POLICY`)
 
 La define quien administra la instalación (es una variable del servidor, no un ajuste del cliente, porque afecta a su dinero).

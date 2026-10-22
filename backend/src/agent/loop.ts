@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { PublicUser } from '../lib/auth.js';
+import { waitForDecision } from './confirm.js';
 import { fallbackCapReached, getFallbackCapUsd, type CustomerKeyStatus, type KeyCandidate, type SpendEntry } from './keys.js';
 import { getAgentLLM } from './llm.js';
 import type { AgentModel } from './models.js';
 import { saveMessages, type AgentMessage, type Conversation } from './store.js';
-import { AGENT_TOOLS, describeTool, executeTool } from './tools.js';
+import { AGENT_TOOLS, describeRecord, describeTool, executeTool } from './tools.js';
 
 /** Events streamed to the browser (one SSE `data:` line each). */
 export type AgentEvent =
@@ -12,6 +13,8 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; changed?: string }
+  | { type: 'confirm_required'; callId: string; label: string }
+  | { type: 'confirm_resolved'; callId: string; decision: 'approved' | 'denied' | 'expired' }
   | { type: 'notice'; code: string; message: string }
   | { type: 'done'; usage: TurnUsage }
   | { type: 'error'; code: string; message: string };
@@ -34,7 +37,7 @@ Cómo trabajar:
 - Consigue los ids con list_records o get_record antes de vincular o modificar registros; no los inventes.
 - Si la petición es ambigua (por ejemplo, varios contactos coinciden con el nombre), pregunta antes de cambiar nada.
 - Si una petición cambiaría o borraría varios registros que la persona no ha nombrado uno a uno (por ejemplo «cualquier deal», «todos los de negociación»), no actúes todavía: lista cuáles serían, con su nombre, valor y propietario, y pide confirmación.
-- Borrar es irreversible: antes de usar delete_record confirma qué registros vas a borrar, salvo que la persona ya los haya identificado sin ambigüedad y pedido borrarlos expresamente.
+- Para borrar usa delete_record: el CRM le muestra a la persona qué se va a borrar y sólo lo hace si pulsa «Borrar». No pidas tú además confirmación por texto, pero asegúrate de tener identificado el registro exacto; si hay duda sobre cuál es, pregunta antes.
 - Si una herramienta devuelve un error, corrígelo y reintenta cuando el fallo sea tuyo (un campo inválido, un id equivocado); si es de permisos o de reglas del CRM, explícalo con palabras sencillas.
 - Calcula las fechas relativas ("mañana", "el viernes") a partir del bloque ${CONTEXT_TAG} del mensaje más reciente y envíalas en ISO 8601.
 - Responde en el idioma de la persona, de forma breve y en texto plano: el chat no interpreta Markdown (usa guiones para las listas). Al terminar, resume lo que hiciste nombrando los registros, no sólo sus ids.
@@ -59,6 +62,8 @@ export interface TurnInput {
   /** A key just failed with this reason / worked. */
   onKeyFailure?: (key: KeyCandidate, reason: Exclude<CustomerKeyStatus, 'ok' | 'unverified'>) => void;
   onKeySuccess?: (key: KeyCandidate) => void;
+  /** Aborted when the browser goes away: pending confirmations then count as "no". */
+  signal?: AbortSignal;
 }
 
 /**
@@ -162,6 +167,32 @@ export function describeApiError(err: unknown): { code: string; message: string 
   return { code: 'AGENT_ERROR', message: 'Error inesperado del asistente.' };
 }
 
+const DECLINED: Record<'denied' | 'expired', string> = {
+  denied: 'La persona canceló el borrado. No se borró nada.',
+  expired: 'La persona no confirmó el borrado a tiempo. No se borró nada.',
+};
+
+/**
+ * Deletes are never run on the model's say-so: the person sees what would be deleted and must
+ * approve it. If the record cannot be described (invalid call / not visible to this user) there is
+ * nothing to confirm and the call just runs and fails like any other.
+ */
+async function confirmedDelete(
+  call: Anthropic.Beta.BetaToolUseBlock,
+  token: string,
+  userId: number,
+  emit: (e: AgentEvent) => void,
+  signal?: AbortSignal,
+) {
+  const label = await describeRecord(call.input, token);
+  if (label === null) return executeTool(call.name, call.input, token);
+  emit({ type: 'confirm_required', callId: call.id, label });
+  const decision = await waitForDecision(userId, call.id, signal);
+  emit({ type: 'confirm_resolved', callId: call.id, decision });
+  if (decision !== 'approved') return { ok: false, content: JSON.stringify({ cancelled: DECLINED[decision] }) };
+  return executeTool(call.name, call.input, token);
+}
+
 /**
  * One user turn: streams Claude's answer, runs the CRM tools it asks for and loops
  * until it answers without tools. History is persisted after every completed step,
@@ -178,6 +209,7 @@ export async function runAgentTurn({
   onSpend,
   onKeyFailure,
   onKeySuccess,
+  signal,
 }: TurnInput): Promise<void> {
   const llm = getAgentLLM();
   const messages: AgentMessage[] = [
@@ -301,7 +333,10 @@ export async function runAgentTurn({
       emit({ type: 'tool_start', id: call.id, name: call.name, label: describeTool(call.name) });
       let outcome;
       try {
-        outcome = await executeTool(call.name, call.input, token);
+        outcome =
+          call.name === 'delete_record'
+            ? await confirmedDelete(call, token, user.id, emit, signal)
+            : await executeTool(call.name, call.input, token);
       } catch {
         outcome = { ok: false, content: JSON.stringify({ error: 'Fallo interno al ejecutar la herramienta' }) };
       }

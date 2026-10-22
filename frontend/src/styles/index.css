@@ -1448,3 +1448,32 @@ section.card h3 {
 section.card + section.card {
   margin-top: 16px;
 }
+
+/* ---------- Confirmación de borrado del asistente ---------- */
+.agent-confirm {
+  align-self: stretch;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+.agent-confirm p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.agent-confirm.approved,
+.agent-confirm.denied,
+.agent-confirm.expired {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.agent-confirm.approved p,
+.agent-confirm.denied p,
+.agent-confirm.expired p {
+  margin: 0;
+}
+.agent-confirm-actions {
+  display: flex;
+  gap: 8px;
+}

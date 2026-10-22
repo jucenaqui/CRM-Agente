@@ -88,7 +88,17 @@ async function dispatch(msg: JsonRpcRequest, user: PublicUser): Promise<object |
       return rpcResult(msg.id, {});
     case 'tools/list':
       return rpcResult(msg.id, {
-        tools: AGENT_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.input_schema })),
+        tools: AGENT_TOOLS.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.input_schema,
+          // Hints so MCP clients can ask the person before running destructive tools.
+          annotations: /^(get|list)_/.test(t.name)
+            ? { readOnlyHint: true }
+            : t.name === 'delete_record'
+              ? { destructiveHint: true }
+              : { readOnlyHint: false, destructiveHint: false },
+        })),
       });
     case 'tools/call': {
       const name = params.name;

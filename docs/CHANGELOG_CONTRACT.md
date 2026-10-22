@@ -50,3 +50,9 @@ Nuevas rutas (todas con JWT salvo `/api/mcp`):
 - Migración 3: tablas `app_settings`, `agent_usage`, `api_tokens`.
 - Variables nuevas: `AGENT_KEY_POLICY`, `AGENT_FALLBACK_MONTHLY_CAP_USD`, `SETTINGS_ENCRYPTION_KEY`, `MCP_RATE_LIMIT_MAX`. Ver [AI_ASSISTANT.md](AI_ASSISTANT.md).
 - Dependencia nueva de desarrollo: `@modelcontextprotocol/sdk` (solo para el test de interoperabilidad MCP).
+
+## 2026-10-22 — Asistente IA: confirmación obligatoria antes de borrar
+- Cada `delete_record` del asistente exige la aprobación de la persona. El turno (SSE) se queda esperando: se emite `confirm_required` (`callId`, `label` p. ej. `empresa «Acme» (id 4)`) y, tras la respuesta, `confirm_resolved` (`decision`: `approved` / `denied` / `expired`). Si el registro no es visible para el usuario no hay nada que confirmar y el borrado falla (404) como siempre.
+- Nueva ruta: `POST /api/agent/chat/confirm` `{callId, approve}` → 204; 404 si no hay confirmación pendiente de ese usuario con ese `callId`.
+- Sin respuesta en 5 min (`AGENT_CONFIRM_TIMEOUT_MS`), o si el navegador se desconecta, cuenta como «no»: no se borra nada.
+- MCP: `tools/list` marca `delete_record` con `destructiveHint` y las de lectura con `readOnlyHint`, para que Claude Code/Desktop pidan permiso según su configuración. El servidor MCP en sí no añade confirmación propia.

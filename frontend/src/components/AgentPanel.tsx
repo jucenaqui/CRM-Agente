@@ -160,6 +160,12 @@ export function AgentPanel() {
         setItems((prev) => prev.map((it) => (it.kind === 'tool' && it.id === e.id ? { ...it, ok: e.ok } : it)));
         if (e.changed) notifyDataChanged(e.changed);
         break;
+      case 'confirm_required':
+        setItems((prev) => [...prev, { kind: 'confirm', callId: e.callId, label: e.label, status: 'pending' }]);
+        break;
+      case 'confirm_resolved':
+        setItems((prev) => prev.map((it) => (it.kind === 'confirm' && it.callId === e.callId ? { ...it, status: e.decision } : it)));
+        break;
       case 'notice':
         setNotice(e.message);
         break;
@@ -187,6 +193,14 @@ export function AgentPanel() {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const answerConfirm = async (callId: string, approve: boolean) => {
+    try {
+      await agentApi.confirm(callId, approve);
+    } catch (e) {
+      setError(errorMessage(e));
     }
   };
 
@@ -303,7 +317,25 @@ export function AgentPanel() {
               </div>
             )}
             {items.map((it, i) =>
-              it.kind === 'tool' ? (
+              it.kind === 'confirm' ? (
+                <div key={`confirm-${it.callId}`} className={`agent-confirm ${it.status}`} role="group" aria-label="Confirmar borrado">
+                  <p>
+                    {it.status === 'pending' ? '¿Borrar ' : it.status === 'approved' ? 'Borrado confirmado: ' : it.status === 'denied' ? 'Borrado cancelado: ' : 'Sin respuesta, no se borró: '}
+                    <strong>{it.label}</strong>
+                    {it.status === 'pending' ? '? Esta acción no se puede deshacer.' : ''}
+                  </p>
+                  {it.status === 'pending' && (
+                    <div className="agent-confirm-actions">
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => void answerConfirm(it.callId, true)}>
+                        Borrar
+                      </button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => void answerConfirm(it.callId, false)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : it.kind === 'tool' ? (
                 <div key={`${it.id}-${i}`} className={`agent-tool ${it.ok === null ? 'running' : it.ok ? 'ok' : 'fail'}`}>
                   <span aria-hidden="true">{it.ok === null ? '⋯' : it.ok ? '✓' : '✕'}</span> {it.label}
                 </div>
@@ -313,7 +345,7 @@ export function AgentPanel() {
                 </div>
               ),
             )}
-            {busy && items[items.length - 1]?.kind !== 'assistant' && (
+            {busy && items[items.length - 1]?.kind !== 'assistant' && !(items[items.length - 1]?.kind === 'confirm' && (items[items.length - 1] as { status: string }).status === 'pending') && (
               <div className="agent-msg assistant thinking" aria-label="El asistente está trabajando">
                 Pensando…
               </div>
