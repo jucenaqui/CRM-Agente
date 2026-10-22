@@ -56,3 +56,7 @@ Nuevas rutas (todas con JWT salvo `/api/mcp`):
 - Nueva ruta: `POST /api/agent/chat/confirm` `{callId, approve}` → 204; 404 si no hay confirmación pendiente de ese usuario con ese `callId`.
 - Sin respuesta en 5 min (`AGENT_CONFIRM_TIMEOUT_MS`), o si el navegador se desconecta, cuenta como «no»: no se borra nada.
 - MCP: `tools/list` marca `delete_record` con `destructiveHint` y las de lectura con `readOnlyHint`, para que Claude Code/Desktop pidan permiso según su configuración. El servidor MCP en sí no añade confirmación propia.
+
+## 2026-10-22 — Asistente IA: la confirmación cubre también las modificaciones
+- `update_company|contact|deal|activity|user` y `move_deal_stage` exigen confirmación igual que `delete_record`. `confirm_required` añade `action` (`delete` | `update`) y, en las modificaciones, `changes: [{field, from, to}]` solo con los campos que realmente cambian (valores normalizados: `acme.com` = `https://acme.com`; etapas y tipos con el nombre de la interfaz; contraseña enmascarada). Un cambio que no modifica nada se ejecuta sin preguntar. Crear sigue sin confirmación.
+- MCP: `update_*` y `move_deal_stage` se marcan `destructiveHint: true`.

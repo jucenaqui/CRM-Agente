@@ -1477,3 +1477,19 @@ section.card + section.card {
   display: flex;
   gap: 8px;
 }
+
+.agent-confirm-changes {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+.agent-confirm-field {
+  color: var(--text-muted);
+}
+.agent-confirm-from {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.agent-confirm:not(.pending) .agent-confirm-changes {
+  margin: 4px 0 0;
+}

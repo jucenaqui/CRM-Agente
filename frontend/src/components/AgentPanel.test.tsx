@@ -163,7 +163,7 @@ describe('AgentPanel', () => {
     await waitFor(() => expect(stream).toBeDefined());
     push({ type: 'conversation', id: 3, title: 't', model: 'claude-opus-5-5' });
     push({ type: 'tool_start', id: 'tu_1', name: 'delete_record', label: 'Borrando un registro' });
-    push({ type: 'confirm_required', callId: 'tu_1', label: 'empresa «Acme» (id 4)' });
+    push({ type: 'confirm_required', callId: 'tu_1', label: 'empresa «Acme» (id 4)', action: 'delete' });
 
     const box = await screen.findByRole('group', { name: /confirmar borrado/i });
     expect(within(box).getByText('empresa «Acme» (id 4)')).toBeInTheDocument();
@@ -175,6 +175,57 @@ describe('AgentPanel', () => {
     expect(answer).toEqual({ callId: 'tu_1', approve: true });
     expect(screen.getByText(/borrado confirmado/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Borrar' })).not.toBeInTheDocument(); // buttons disappear once answered
+  });
+
+  it('asks before updating: lists old → new values and uses an Actualizar button', async () => {
+    const enc = new TextEncoder();
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const push = (e: unknown) => stream.enqueue(enc.encode(`data: ${JSON.stringify(e)}
+
+`));
+    let answer: Record<string, unknown> | undefined;
+    baseRoutes({
+      'POST /api/agent/chat': () =>
+        new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      'POST /api/agent/chat/confirm': (_u, init) => {
+        answer = JSON.parse(String(init.body));
+        push({ type: 'confirm_resolved', callId: 'tu_3', decision: 'approved' });
+        push({ type: 'text', delta: 'Actualizado.' });
+        push({ type: 'done', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 } });
+        stream.close();
+        return new Response(null, { status: 204 });
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: /abrir asistente/i }));
+    await screen.findByLabelText('Modelo');
+    await user.type(screen.getByLabelText(/mensaje para el asistente/i), 'mueve el deal{Enter}');
+    await waitFor(() => expect(stream).toBeDefined());
+    push({
+      type: 'confirm_required',
+      callId: 'tu_3',
+      label: 'deal «Licencias» (id 7)',
+      action: 'update',
+      changes: [
+        { field: 'etapa', from: 'Negociación', to: 'Ganado' },
+        { field: 'importe', from: '5000', to: '6000' },
+      ],
+    });
+
+    const box = await screen.findByRole('group', { name: /confirmar cambio/i });
+    expect(within(box).getByText('deal «Licencias» (id 7)')).toBeInTheDocument();
+    expect(within(box).getByText('Negociación')).toBeInTheDocument(); // valor anterior
+    expect(within(box).getByText('Ganado')).toBeInTheDocument(); // valor nuevo
+    expect(within(box).getByText('6000')).toBeInTheDocument();
+    expect(within(box).queryByRole('button', { name: 'Borrar' })).not.toBeInTheDocument();
+    expect(within(box).queryByText(/no se puede deshacer/i)).not.toBeInTheDocument();
+
+    await user.click(within(box).getByRole('button', { name: 'Actualizar' }));
+    expect(await screen.findByText('Actualizado.')).toBeInTheDocument();
+    expect(answer).toEqual({ callId: 'tu_3', approve: true });
+    expect(screen.getByText(/cambio confirmado/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar' })).not.toBeInTheDocument();
   });
 
   it('sends approve:false when the person cancels', async () => {
@@ -201,7 +252,7 @@ describe('AgentPanel', () => {
     await screen.findByLabelText('Modelo');
     await user.type(screen.getByLabelText(/mensaje para el asistente/i), 'borra Acme{Enter}');
     await waitFor(() => expect(stream).toBeDefined());
-    push({ type: 'confirm_required', callId: 'tu_2', label: 'contacto «Juan Pérez» (id 1)' });
+    push({ type: 'confirm_required', callId: 'tu_2', label: 'contacto «Juan Pérez» (id 1)', action: 'delete' });
     await user.click(within(await screen.findByRole('group', { name: /confirmar borrado/i })).getByRole('button', { name: 'Cancelar' }));
     expect(await screen.findByText(/borrado cancelado/i)).toBeInTheDocument();
     expect(answer).toEqual({ callId: 'tu_2', approve: false });

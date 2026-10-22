@@ -95,8 +95,8 @@ async function dispatch(msg: JsonRpcRequest, user: PublicUser): Promise<object |
           // Hints so MCP clients can ask the person before running destructive tools.
           annotations: /^(get|list)_/.test(t.name)
             ? { readOnlyHint: true }
-            : t.name === 'delete_record'
-              ? { destructiveHint: true }
+            : t.name === 'delete_record' || /^update_|^move_/.test(t.name)
+              ? { readOnlyHint: false, destructiveHint: true }
               : { readOnlyHint: false, destructiveHint: false },
         })),
       });

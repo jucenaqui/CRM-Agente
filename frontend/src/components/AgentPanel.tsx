@@ -13,6 +13,11 @@ import { errorMessage } from '../api/client';
 
 const MODEL_KEY = 'newcrm.agentModel';
 
+const CONFIRM_TEXT = {
+  delete: { pending: '¿Borrar', approved: 'Borrado confirmado:', denied: 'Borrado cancelado:', expired: 'Sin respuesta, no se borró:' },
+  update: { pending: '¿Actualizar', approved: 'Cambio confirmado:', denied: 'Cambio cancelado:', expired: 'Sin respuesta, no se modificó:' },
+} as const;
+
 const SUGGESTIONS = [
   '¿Cómo va mi embudo de ventas?',
   'Crea la empresa Acme con web acme.com',
@@ -161,7 +166,10 @@ export function AgentPanel() {
         if (e.changed) notifyDataChanged(e.changed);
         break;
       case 'confirm_required':
-        setItems((prev) => [...prev, { kind: 'confirm', callId: e.callId, label: e.label, status: 'pending' }]);
+        setItems((prev) => [
+          ...prev,
+          { kind: 'confirm', callId: e.callId, label: e.label, action: e.action, changes: e.changes, status: 'pending' },
+        ]);
         break;
       case 'confirm_resolved':
         setItems((prev) => prev.map((it) => (it.kind === 'confirm' && it.callId === e.callId ? { ...it, status: e.decision } : it)));
@@ -318,16 +326,36 @@ export function AgentPanel() {
             )}
             {items.map((it, i) =>
               it.kind === 'confirm' ? (
-                <div key={`confirm-${it.callId}`} className={`agent-confirm ${it.status}`} role="group" aria-label="Confirmar borrado">
+                <div
+                  key={`confirm-${it.callId}`}
+                  className={`agent-confirm ${it.status}`}
+                  role="group"
+                  aria-label={it.action === 'delete' ? 'Confirmar borrado' : 'Confirmar cambio'}
+                >
                   <p>
-                    {it.status === 'pending' ? '¿Borrar ' : it.status === 'approved' ? 'Borrado confirmado: ' : it.status === 'denied' ? 'Borrado cancelado: ' : 'Sin respuesta, no se borró: '}
-                    <strong>{it.label}</strong>
-                    {it.status === 'pending' ? '? Esta acción no se puede deshacer.' : ''}
+                    {CONFIRM_TEXT[it.action][it.status]} <strong>{it.label}</strong>
+                    {it.status === 'pending' ? (it.action === 'delete' ? '? Esta acción no se puede deshacer.' : '?') : ''}
                   </p>
+                  {it.changes && it.changes.length > 0 && (
+                    <ul className="agent-confirm-changes">
+                      {it.changes.map((c) => (
+                        <li key={c.field}>
+                          <span className="agent-confirm-field">{c.field}:</span>{' '}
+                          {c.from !== '' && <span className="agent-confirm-from">{c.from}</span>}
+                          {c.from !== '' && ' → '}
+                          <strong>{c.to}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {it.status === 'pending' && (
                     <div className="agent-confirm-actions">
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => void answerConfirm(it.callId, true)}>
-                        Borrar
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${it.action === 'delete' ? 'btn-danger' : 'btn-primary'}`}
+                        onClick={() => void answerConfirm(it.callId, true)}
+                      >
+                        {it.action === 'delete' ? 'Borrar' : 'Actualizar'}
                       </button>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => void answerConfirm(it.callId, false)}>
                         Cancelar

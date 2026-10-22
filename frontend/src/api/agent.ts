@@ -28,8 +28,21 @@ export type TranscriptItem =
   | { kind: 'user'; text: string }
   | { kind: 'assistant'; text: string }
   | { kind: 'tool'; id: string; name: string; label: string; ok: boolean | null }
-  /** Sólo en el cliente: confirmación de un borrado que pidió el asistente. */
-  | { kind: 'confirm'; callId: string; label: string; status: 'pending' | 'approved' | 'denied' | 'expired' };
+  /** Sólo en el cliente: confirmación de un borrado o cambio que pidió el asistente. */
+  | {
+      kind: 'confirm';
+      callId: string;
+      label: string;
+      action: 'delete' | 'update';
+      changes?: FieldChange[];
+      status: 'pending' | 'approved' | 'denied' | 'expired';
+    };
+
+export interface FieldChange {
+  field: string;
+  from: string;
+  to: string;
+}
 
 export interface ConversationDetail extends ConversationSummary {
   items: TranscriptItem[];
@@ -49,7 +62,7 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; changed?: string }
-  | { type: 'confirm_required'; callId: string; label: string }
+  | { type: 'confirm_required'; callId: string; label: string; action: 'delete' | 'update'; changes?: FieldChange[] }
   | { type: 'confirm_resolved'; callId: string; decision: 'approved' | 'denied' | 'expired' }
   | { type: 'notice'; code: string; message: string }
   | { type: 'done'; usage: TurnUsage }
@@ -93,7 +106,7 @@ export const agentApi = {
   conversations: () => request<{ data: ConversationSummary[] }>('/agent/conversations'),
   conversation: (id: number) => request<ConversationDetail>(`/agent/conversations/${id}`),
   removeConversation: (id: number) => request<void>(`/agent/conversations/${id}`, { method: 'DELETE' }),
-  /** Respuesta de la persona a una confirmación de borrado pendiente. */
+  /** Respuesta de la persona a una confirmación (borrado o cambio) pendiente. */
   confirm: (callId: string, approve: boolean) =>
     request<void>('/agent/chat/confirm', { method: 'POST', body: { callId, approve } }),
 };

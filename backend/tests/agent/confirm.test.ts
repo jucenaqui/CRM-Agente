@@ -216,6 +216,99 @@ describe('delete confirmation', () => {
     expect(events.some((e) => e.type === 'confirm_required')).toBe(false);
     expect(events.find((e) => e.type === 'tool_end')).toMatchObject({ ok: true });
     expect(calls[0].system).toBe(SYSTEM_PROMPT);
-    expect(SYSTEM_PROMPT).toMatch(/pulsa «Borrar»/);
+    expect(SYSTEM_PROMPT).toMatch(/botón de confirmar/);
+  });
+});
+
+describe('update confirmation', () => {
+  let admin: string;
+  beforeAll(async () => {
+    admin = (await request(app).post('/api/auth/login').send({ email: 'conf-1@test.local', password: 'Password123!' })).body.token;
+  });
+
+  const companyName = async (id: number) => (await request(app).get(`/api/companies/${id}`).set(auth(owner.token))).body.name as string;
+
+  it('shows each field that changes (old → new) and applies it only after approval', async () => {
+    const id = await makeCompany('Nombre viejo');
+    fakeLLM([
+      reply([toolUse('tu_u1', 'update_company', { id, name: 'Nombre nuevo', industry: 'Software' })], 'tool_use'),
+      reply([text('Actualizada.')]),
+    ]);
+    const chat = startChat(owner.token, 'Renombra la empresa');
+    await waitPending();
+    expect(await companyName(id)).toBe('Nombre viejo'); // not applied while waiting
+    await confirm(owner.token, 'tu_u1', true);
+    const events = await chat;
+
+    const req = events.find((e) => e.type === 'confirm_required')!;
+    expect(req).toMatchObject({ action: 'update', label: expect.stringContaining('Nombre viejo') });
+    expect(req.changes).toEqual([
+      { field: 'nombre', from: 'Nombre viejo', to: 'Nombre nuevo' },
+      { field: 'sector', from: '(vacío)', to: 'Software' },
+    ]);
+    expect(await companyName(id)).toBe('Nombre nuevo');
+    expect(events.find((e) => e.type === 'tool_end')).toMatchObject({ ok: true });
+  });
+
+  it('keeps the record untouched when the person cancels, and tells the model', async () => {
+    const id = await makeCompany('Sin tocar');
+    const calls = fakeLLM([
+      reply([toolUse('tu_u2', 'update_company', { id, name: 'Cambiada' })], 'tool_use'),
+      reply([text('No la cambio.')]),
+    ]);
+    const chat = startChat(owner.token, 'Cambia el nombre');
+    await waitPending();
+    await confirm(owner.token, 'tu_u2', false);
+    const events = await chat;
+    expect(await companyName(id)).toBe('Sin tocar');
+    expect(events.find((e) => e.type === 'confirm_resolved')).toMatchObject({ decision: 'denied' });
+    const result = (calls[1].messages[calls[1].messages.length - 1].content as { content: string; is_error: boolean }[])[0];
+    expect(result.is_error).toBe(true);
+    expect(result.content).toContain('No se modificó nada');
+  });
+
+  it('does not ask when the update changes nothing (same value, even if written differently)', async () => {
+    const id = await makeCompany('Igual');
+    await request(app).patch(`/api/companies/${id}`).set(auth(owner.token)).send({ website: 'https://igual.com' });
+    fakeLLM([
+      reply([toolUse('tu_u3', 'update_company', { id, name: ' Igual ', website: 'igual.com' })], 'tool_use'),
+      reply([text('Ya estaba así.')]),
+    ]);
+    const events = await startChat(owner.token, 'Pon el mismo nombre');
+    expect(events.some((e) => e.type === 'confirm_required')).toBe(false);
+    expect(events.find((e) => e.type === 'tool_end')).toMatchObject({ ok: true });
+  });
+
+  it('asks when moving a deal between stages, using the interface names', async () => {
+    const deal = (
+      await request(app).post('/api/deals').set(auth(owner.token)).send({ title: 'Trato', value: 100, stage: 'negotiation' })
+    ).body.id as number;
+    fakeLLM([reply([toolUse('tu_u4', 'move_deal_stage', { id: deal, stage: 'won' })], 'tool_use'), reply([text('Movido.')])]);
+    const chat = startChat(owner.token, 'Pasa el deal a ganado');
+    await waitPending();
+    await confirm(owner.token, 'tu_u4', true);
+    const events = await chat;
+    expect(events.find((e) => e.type === 'confirm_required')!.changes).toEqual([{ field: 'etapa', from: 'Negociación', to: 'Ganado' }]);
+    expect((await request(app).get(`/api/deals/${deal}`).set(auth(owner.token))).body.stage).toBe('won');
+  });
+
+  it('never puts a password on screen or in the events', async () => {
+    fakeLLM([
+      reply([toolUse('tu_u5', 'update_user', { id: other.id, password: 'SuperSecreta123!' })], 'tool_use'),
+      reply([text('Cambiada.')]),
+    ]);
+    const chat = startChat(admin, 'Cambia la contraseña');
+    await waitPending();
+    await confirm(admin, 'tu_u5', false);
+    const events = await chat;
+    const req = events.find((e) => e.type === 'confirm_required')!;
+    expect(req.changes).toEqual([{ field: 'contraseña', from: '', to: '(nueva contraseña)' }]);
+    expect(JSON.stringify(events)).not.toContain('SuperSecreta123!');
+  });
+
+  it('creating records still needs no confirmation', async () => {
+    fakeLLM([reply([toolUse('tu_u6', 'create_company', { name: 'Directa' })], 'tool_use'), reply([text('Creada.')])]);
+    const events = await startChat(owner.token, 'Crea Directa');
+    expect(events.some((e) => e.type === 'confirm_required')).toBe(false);
   });
 });

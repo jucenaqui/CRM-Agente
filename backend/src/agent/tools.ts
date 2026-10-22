@@ -360,6 +360,100 @@ export async function describeRecord(input: unknown, token: string): Promise<str
   }
 }
 
+export interface Change {
+  field: string;
+  from: string;
+  to: string;
+}
+
+const UPDATE_ENTITY: Record<string, string> = {
+  update_company: 'companies',
+  update_contact: 'contacts',
+  update_deal: 'deals',
+  update_activity: 'activities',
+  update_user: 'users',
+  move_deal_stage: 'deals',
+};
+
+/** Tools that modify an existing record (they need the person's confirmation, like deletes). */
+export const isUpdateTool = (name: string): boolean => name in UPDATE_ENTITY;
+
+const FIELD_LABEL: Record<string, string> = {
+  name: 'nombre', industry: 'sector', website: 'web', phone: 'teléfono', address: 'dirección',
+  firstName: 'nombre', lastName: 'apellidos', email: 'email', position: 'cargo', companyId: 'empresa (id)',
+  title: 'título', value: 'importe', currency: 'moneda', stage: 'etapa', contactId: 'contacto (id)',
+  expectedCloseDate: 'cierre previsto', type: 'tipo', subject: 'asunto', description: 'descripción',
+  dueDate: 'vencimiento', completed: 'completada', dealId: 'deal (id)', role: 'rol', password: 'contraseña',
+};
+const STAGE_ES: Record<string, string> = {
+  lead: 'Lead', qualified: 'Calificado', proposal: 'Propuesta', negotiation: 'Negociación', won: 'Ganado', lost: 'Perdido',
+};
+const TYPE_ES: Record<string, string> = { call: 'Llamada', email: 'Email', meeting: 'Reunión', task: 'Tarea', note: 'Nota' };
+const ROLE_ES: Record<string, string> = { admin: 'Administrador', sales: 'Ventas' };
+
+/** Canonical form of a field value, so "acme.com" vs "https://acme.com" or "" vs null are not reported as changes. */
+function canon(field: string, v: unknown): string | number | boolean | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    if (field === 'email') return t.toLowerCase();
+    if (field === 'currency') return t.toUpperCase();
+    if (field === 'website') return /^[a-z][a-z0-9+.-]*:/i.test(t) ? t : `https://${t}`;
+    if (field === 'dueDate' || field === 'expectedCloseDate') {
+      const ms = Date.parse(t);
+      return Number.isNaN(ms) ? t : new Date(ms).toISOString();
+    }
+    return t;
+  }
+  return typeof v === 'number' || typeof v === 'boolean' ? v : JSON.stringify(v);
+}
+
+function shown(field: string, v: unknown): string {
+  const c = canon(field, v);
+  if (c === null) return '(vacío)';
+  if (field === 'password') return '(nueva contraseña)';
+  if (typeof c === 'boolean') return c ? 'sí' : 'no';
+  if (field === 'stage') return STAGE_ES[String(c)] ?? String(c);
+  if (field === 'type') return TYPE_ES[String(c)] ?? String(c);
+  if (field === 'role') return ROLE_ES[String(c)] ?? String(c);
+  return String(c);
+}
+
+/**
+ * What an update would change, for the confirmation shown to the person: the record and each field
+ * that really changes (old -> new). Null when the call is invalid / the record is not visible (the call
+ * then runs and fails normally) or when nothing would change (nothing to confirm).
+ */
+export async function describeChange(
+  toolName: string,
+  input: unknown,
+  token: string,
+): Promise<{ label: string; changes: Change[] } | null> {
+  const entity = UPDATE_ENTITY[toolName];
+  const { id, ...fields } = (input ?? {}) as Record<string, unknown>;
+  if (!entity || typeof id !== 'number') return null;
+  const got = await executeTool('get_record', { entity, id }, token);
+  if (!got.ok) return null;
+  let record: Record<string, unknown>;
+  try {
+    record = JSON.parse(got.content) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const changes: Change[] = [];
+  for (const [field, next] of Object.entries(fields)) {
+    if (field !== 'password' && canon(field, next) === canon(field, record[field])) continue;
+    changes.push({
+      field: FIELD_LABEL[field] ?? field,
+      from: field === 'password' ? '' : shown(field, record[field]),
+      to: shown(field, next),
+    });
+  }
+  if (changes.length === 0) return null;
+  return { label: `${RECORD_NAME[entity](record)} (id ${id})`, changes };
+}
+
 const TOOL_LABELS: Record<string, string> = {
   get_current_user: 'Consultando tu usuario',
   get_dashboard: 'Consultando el resumen',

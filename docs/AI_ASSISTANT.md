@@ -8,9 +8,13 @@ NEWCRM se despliega **una instalación por cliente** (cada cliente tiene su serv
 | **Clave del cliente** | El cliente, directamente a Anthropic | Panel «Asistente»; un admin guarda su clave en **Ajustes** |
 | **MCP** | El cliente, con su suscripción de Claude | Claude Code / Claude Desktop con un token personal (Ajustes → Conexión con Claude) |
 
-## Borrados: siempre con confirmación
+## Borrados y cambios: siempre con confirmación
 
-En el chat del CRM el asistente **no puede borrar nada por su cuenta**. Antes de ejecutar un borrado, el chat muestra qué se va a borrar («empresa «Acme» (id 4)») con los botones **Borrar** y **Cancelar**. Está forzado en el servidor, no depende de las instrucciones del modelo. Sin respuesta en 5 minutos (`AGENT_CONFIRM_TIMEOUT_MS`) o si se cierra la pestaña, no se borra nada. Además, si una petición cambiaría varios registros sin nombrarlos, el asistente primero los lista y pregunta. Por MCP, la confirmación la gestiona la aplicación del cliente (Claude Code y Desktop piden permiso por herramienta; el servidor marca `delete_record` como destructiva).
+En el chat del CRM el asistente **no puede borrar ni modificar nada por su cuenta**. Antes de ejecutar un borrado, o cualquier cambio sobre un registro existente (editar, mover un deal de etapa, actualizar un usuario), el chat muestra el recuadro de confirmación:
+- **Borrar:** «¿Borrar empresa «Acme» (id 4)? Esta acción no se puede deshacer», con los botones **Borrar** y **Cancelar**.
+- **Cambiar:** «¿Actualizar empresa «Acme» (id 4)?» con la lista de lo que cambia, campo por campo (por ejemplo `nombre: Acme → Acme SA`, `etapa: Negociación → Ganado`), con los botones **Actualizar** y **Cancelar**. Solo se listan los campos que de verdad cambian; si el cambio no modifica nada, no se pregunta. Las contraseñas nunca se muestran.
+
+Está forzado en el servidor, no depende de las instrucciones del modelo. Sin respuesta en 5 minutos (`AGENT_CONFIRM_TIMEOUT_MS`) o si se cierra la pestaña, no se cambia nada. **Crear registros no pide confirmación.** Además, si una petición cambiaría varios registros sin nombrarlos, el asistente primero los lista y pregunta. Por MCP, la confirmación la gestiona la aplicación del cliente (Claude Code y Desktop piden permiso por herramienta; el servidor marca como destructivas las de borrar y modificar).
 
 ## Qué clave se usa (`AGENT_KEY_POLICY`)
 
