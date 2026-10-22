@@ -335,16 +335,26 @@ function safeJson(s: string): unknown {
   }
 }
 
-/** Short Spanish label for the UI ("Creando deal", ...). */
+const TOOL_LABELS: Record<string, string> = {
+  get_current_user: 'Consultando tu usuario',
+  get_dashboard: 'Consultando el resumen',
+  list_records: 'Buscando registros',
+  get_record: 'Consultando un registro',
+  delete_record: 'Borrando un registro',
+  move_deal_stage: 'Moviendo el deal de etapa',
+  create_company: 'Creando una empresa',
+  update_company: 'Actualizando una empresa',
+  create_contact: 'Creando un contacto',
+  update_contact: 'Actualizando un contacto',
+  create_deal: 'Creando un deal',
+  update_deal: 'Actualizando un deal',
+  create_activity: 'Creando una actividad',
+  update_activity: 'Actualizando una actividad',
+  create_user: 'Creando un usuario',
+  update_user: 'Actualizando un usuario',
+};
+
+/** Short Spanish label for the UI ("Creando una empresa", ...). */
 export function describeTool(name: string): string {
-  const [verb, rest] = name.split(/_(.*)/s);
-  const labels: Record<string, string> = {
-    create: 'Creando',
-    update: 'Actualizando',
-    delete: 'Borrando',
-    list: 'Buscando',
-    get: 'Consultando',
-    move: 'Moviendo',
-  };
-  return `${labels[verb] ?? verb} ${(rest ?? '').replace(/_/g, ' ')}`.trim();
+  return TOOL_LABELS[name] ?? 'Trabajando en el CRM';
 }

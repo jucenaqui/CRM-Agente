@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { setAgentLLM, type AgentLLM, type StreamParams } from '../../src/agent/llm';
 import { SYSTEM_PROMPT } from '../../src/agent/loop';
-import { AGENT_TOOLS } from '../../src/agent/tools';
+import { AGENT_TOOLS, describeTool } from '../../src/agent/tools';
 import { app } from '../../src/app';
 
 type Block = Anthropic.Beta.BetaContentBlock;
@@ -336,6 +336,7 @@ describe('agent: conversations', () => {
       expect(t.name).toMatch(/^[a-z_]{1,64}$/);
       expect(t.input_schema.type).toBe('object');
       expect(t.eager_input_streaming).toBe(true);
+      expect(describeTool(t.name)).not.toBe('Trabajando en el CRM'); // every tool has its own Spanish label
     }
   });
 });
