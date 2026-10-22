@@ -73,6 +73,19 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_activities_owner ON activities(ownerId);
   CREATE INDEX idx_activities_due ON activities(dueDate);
   `,
+  // 2: AI agent conversations (history is append-only, stored as Claude API messages JSON)
+  `
+  CREATE TABLE agent_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    model TEXT NOT NULL,
+    messages TEXT NOT NULL DEFAULT '[]',
+    ownerId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE INDEX idx_agent_conversations_owner ON agent_conversations(ownerId);
+  `,
 ];
 
 export function migrate(db: DB): void {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ListParams, Paginated } from '../api/types';
 import { errorMessage } from '../api/client';
+import { DATA_CHANGED_EVENT } from '../api/agent';
 
 export function useDebounced<T>(value: T, delay = 300): T {
   const [v, setV] = useState(value);
@@ -50,6 +51,13 @@ export function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList): A
   }, [...deps, tick]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
+
+  // Recarga cuando el asistente modifica datos del CRM desde el chat.
+  useEffect(() => {
+    window.addEventListener(DATA_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, reload);
+  }, [reload]);
+
   return { data, loading, error, reload, setData };
 }
 

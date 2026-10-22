@@ -14,3 +14,20 @@
 - Fechas `dueDate`/`expectedCloseDate` se normalizan a ISO 8601 completo (`toISOString`).
 - Users: extra `GET /api/users/:id` (admin). No se puede borrar la propia cuenta ni borrar o degradar al último admin (409). Al borrar un usuario sus registros pasan al admin que lo borra.
 - `upcomingActivities`: no completadas con `dueDate >= ahora`, ordenadas por fecha (máx. 5).
+
+## 2026-10-22 — Asistente IA (nuevo módulo)
+Rutas nuevas, todas con `Authorization: Bearer <token>`:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | /api/agent/models | `{configured, defaultModel, models:[{id,label,description,inputPrice,outputPrice}]}` |
+| POST | /api/agent/chat | `{message, model?, conversationId?}` → **SSE** (`text/event-stream`), un evento JSON por línea `data:` |
+| GET | /api/agent/conversations | `{data:[{id,title,model,createdAt,updatedAt}]}` (sólo las propias) |
+| GET | /api/agent/conversations/:id | `{id,title,model,…,items:[{kind:user|assistant|tool,…}]}` |
+| DELETE | /api/agent/conversations/:id | 204 |
+
+- Eventos SSE: `conversation`, `text` (delta), `tool_start`, `tool_end` (`ok`, `changed` = entidad modificada), `done` (`usage` con coste estimado), `error` (`code`, `message`).
+- Errores antes del streaming: 503 `AGENT_NOT_CONFIGURED` (sin `ANTHROPIC_API_KEY`), 400 modelo no permitido (`details.allowed`), 404 conversación ajena, 409 `AGENT_BUSY`, 429 por usuario (`AGENT_RATE_LIMIT_MAX`, 60 cada 15 min).
+- El agente actúa con el token del usuario: sus herramientas llaman a la API del CRM por un servidor interno sólo en `127.0.0.1` con clave aleatoria por proceso, así que hereda validación y permisos (`sales` sólo lo suyo, `users` sólo admin).
+- Modelos elegibles: `claude-opus-5-5` (por defecto), `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`; el despliegue los limita con `AGENT_MODELS` y fija el preseleccionado con `AGENT_DEFAULT_MODEL`. Se puede cambiar de modelo a mitad de conversación.
+- Tabla nueva `agent_conversations` (migración 2), borrado en cascada con el usuario.

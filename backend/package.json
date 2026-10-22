@@ -9,9 +9,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "agent:check": "tsx src/agent/check.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.1.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "11.10.0",
     "cors": "^2.8.6",

@@ -57,6 +57,10 @@ Si no ejecutas el seed, el **primer usuario que se registre** será `admin`; los
 | `BCRYPT_ROUNDS` | `10` | (opcional) Coste de bcrypt |
 | `RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` | `300` / `10` | (opcional) Peticiones por 15 min en `/api` y en login/registro |
 | `SQLITE_DRIVER` | auto | (opcional) `better` o `node`; por defecto usa `better-sqlite3` y, si su binario no carga (p. ej. Node 24), `node:sqlite` |
+| `ANTHROPIC_API_KEY` | — | Clave de la API de Anthropic para el asistente IA; sin ella el asistente responde 503 |
+| `AGENT_MODELS` | todos | (opcional) Modelos que el cliente puede elegir, separados por comas |
+| `AGENT_DEFAULT_MODEL` | `claude-opus-5-5` | (opcional) Modelo preseleccionado |
+| `AGENT_RATE_LIMIT_MAX` | `60` | (opcional) Mensajes al asistente por usuario cada 15 min |
 
 Ver `backend/.env.example`.
 
@@ -81,6 +85,27 @@ NEWCRM/
     └── qa/               # plan de pruebas y bugs
 ```
 
+## Asistente IA
+
+Botón **Asistente** (abajo a la derecha, en todas las pantallas). Abre un chat donde se le pide en lenguaje natural lo mismo que se haría en la interfaz: buscar, crear, editar, mover de etapa o borrar empresas, contactos, deals, actividades y (si eres admin) usuarios. Las pantallas abiertas se refrescan solas cuando el asistente cambia datos.
+
+- **Permisos:** el asistente actúa con tu sesión. Un `sales` sólo ve y cambia lo suyo; sólo un admin gestiona usuarios. Antes de borrar, confirma qué va a borrar salvo que se lo hayas pedido sin ambigüedad.
+- **Modelo:** cada usuario elige en el panel entre los modelos habilitados y puede cambiarlo a mitad de conversación. El servidor decide cuáles se ofrecen (`AGENT_MODELS`) y el preseleccionado (`AGENT_DEFAULT_MODEL`).
+
+| Modelo | Uso | Entrada / salida (USD por millón de tokens) |
+|---|---|---|
+| `claude-opus-5-5` (por defecto) | Equilibrio recomendado | 4 / 20 |
+| `claude-sonnet-5-5` | Rápido y económico | 2 / 10 |
+| `claude-haiku-5-5` | El más barato, tareas sencillas | 0.10 / 0.50 |
+| `claude-fable-5-1` | El más potente, más lento y caro | 10 / 50 |
+
+- **Coste:** tras cada respuesta el panel muestra los tokens y un coste estimado.
+- **Historial:** las conversaciones se guardan por usuario (privadas) y se pueden reabrir o borrar.
+- **Puesta en marcha:** crea una clave en https://console.anthropic.com, ponla en `backend/.env` como `ANTHROPIC_API_KEY=...`, reinicia y comprueba con:
+  ```bash
+  npm --prefix backend run agent:check   # verifica la clave y que cada modelo esté disponible (no gasta tokens)
+  ```
+
 ## API (resumen)
 Prefijo `/api`, JSON, cabecera `Authorization: Bearer <token>` (salvo auth y health).
 
@@ -101,6 +126,9 @@ Prefijo `/api`, JSON, cabecera `Authorization: Bearer <token>` (salvo auth y hea
 | GET/POST | `/api/activities` | filtros `?contactId=&dealId=&completed=` |
 | GET/PATCH/DELETE | `/api/activities/:id` | |
 | GET | `/api/dashboard/stats` | totales, deals por etapa, próximas actividades |
+| GET | `/api/agent/models` | modelos del asistente que el cliente puede elegir |
+| POST | `/api/agent/chat` | mensaje al asistente → respuesta en streaming (SSE) |
+| GET/DELETE | `/api/agent/conversations[/:id]` | historial de conversaciones propias |
 | GET | `/api/health` | `{status:"ok"}` |
 
 - Listas: `?page=1&pageSize=20&search=&sort=&order=asc|desc` → `{data,total,page,pageSize}`.

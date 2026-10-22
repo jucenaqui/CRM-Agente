@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ROLE_LABELS, initials } from '../utils/format';
+import { AgentPanel } from './AgentPanel';
 
 function Icon({ d }: { d: string }) {
   return (
@@ -91,6 +92,7 @@ export function Layout({ children }: { children?: ReactNode }) {
         </header>
         <main className="content">{children ?? <Outlet />}</main>
       </div>
+      <AgentPanel />
     </div>
   );
 }
