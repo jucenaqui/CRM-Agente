@@ -131,6 +131,8 @@ Prefijo `/api`, JSON, cabecera `Authorization: Bearer <token>` (salvo auth y hea
 | GET/POST | `/api/activities` | filtros `?contactId=&dealId=&completed=` |
 | GET/PATCH/DELETE | `/api/activities/:id` | |
 | GET | `/api/dashboard/stats` | totales, deals por etapa, próximas actividades |
+| GET | `/api/dashboard/metrics` | métricas de ventas de un periodo |
+| GET | `/api/pipeline` | etapas, orígenes de lead y motivos de pérdida (los edita el admin en Ajustes) |
 | GET | `/api/agent/models` | modelos del asistente que el cliente puede elegir |
 | POST | `/api/agent/chat` | mensaje al asistente → respuesta en streaming (SSE) |
 | GET/DELETE | `/api/agent/conversations[/:id]` | historial de conversaciones propias |
@@ -143,7 +145,7 @@ Prefijo `/api`, JSON, cabecera `Authorization: Bearer <token>` (salvo auth y hea
 - Listas: `?page=1&pageSize=20&search=&sort=&order=asc|desc` → `{data,total,page,pageSize}`.
 - Errores: `{ "error": { "code", "message", "details"? } }`.
 - Roles: `sales` sólo ve/edita sus registros; `admin` ve todo y gestiona usuarios.
-- Etapas de deal: `lead`, `qualified`, `proposal`, `negotiation`, `won`, `lost`.
+- Etapas de deal: las define cada cliente; por defecto `lead`, `qualified`, `proposal`, `negotiation`, `won`, `lost` (ver [docs/CRM_CONCEPTS.md](docs/CRM_CONCEPTS.md)).
 
 Detalle completo en [`docs/CONTRACT.md`](docs/CONTRACT.md).
 
@@ -157,5 +159,5 @@ Estado al cierre: backend 226 tests (integración, e2e de QA y seguridad); front
 
 ## Documentación
 Índice completo y orden de lectura: [docs/README.md](docs/README.md).
-- [Asistente IA y MCP](docs/AI_ASSISTANT.md) · [PRD](docs/PRD.md) · [Backlog](docs/BACKLOG.md) · [Contrato](docs/CONTRACT.md) · [Cambios al contrato](docs/CHANGELOG_CONTRACT.md) · [Integración](docs/INTEGRATION_ISSUES.md) · [Release notes](docs/RELEASE_NOTES.md)
+- [Cómo funciona el CRM: campos, embudo y métricas](docs/CRM_CONCEPTS.md) · [Asistente IA y MCP](docs/AI_ASSISTANT.md) · [PRD](docs/PRD.md) · [Backlog](docs/BACKLOG.md) · [Contrato](docs/CONTRACT.md) · [Cambios al contrato](docs/CHANGELOG_CONTRACT.md) · [Integración](docs/INTEGRATION_ISSUES.md) · [Release notes](docs/RELEASE_NOTES.md)
 - Seguridad: [Threat model](docs/security/THREAT_MODEL.md) · [Hallazgos](docs/security/FINDINGS.md) — QA: [Plan](docs/qa/TEST_PLAN.md) · [Bugs](docs/qa/BUGS.md)

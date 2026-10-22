@@ -47,7 +47,7 @@ Primer mensaje de una conversación, con una consulta sencilla (1-2 herramientas
 | Opus 5.5 | 0,04 USD |
 | Fable 5.1 | 0,08 USD |
 
-Casi todo es la **escritura de caché** de las instrucciones y las 16 herramientas (~5.600 tokens), que se vuelve a pagar cuando pasan más de 5 minutos entre mensajes. Los mensajes siguientes dentro de la misma conversación cuestan bastante menos. Son estimaciones calculadas a partir de los tokens que informa Anthropic; la factura real está en console.anthropic.com. Los precios de lectura de caché de cada modelo salen de la documentación; el de Haiku 5.5 (0,01 USD) y el recargo de escritura del 25 % son supuestos habituales no confirmados para estos modelos.
+Casi todo es la **escritura de caché** de las instrucciones y las 18 herramientas (6.530 tokens medidos con el contador de Anthropic; eran ~5.600 antes de añadir `get_pipeline` y `get_metrics`), que se vuelve a pagar cuando pasan más de 5 minutos entre mensajes. Los mensajes siguientes dentro de la misma conversación cuestan bastante menos. Son estimaciones calculadas a partir de los tokens que informa Anthropic; la factura real está en console.anthropic.com. Los precios de lectura de caché de cada modelo salen de la documentación; el de Haiku 5.5 (0,01 USD) y el recargo de escritura del 25 % son supuestos habituales no confirmados para estos modelos.
 
 ## Registro de consumo y facturación
 
@@ -61,7 +61,7 @@ Cada paso del asistente se guarda en `agent_usage`: usuario, modelo, tokens, cos
 
 ## MCP (Claude Code y Claude Desktop)
 
-Servidor MCP en `POST /api/mcp` (transporte Streamable HTTP, sin sesiones), con las mismas 16 herramientas del asistente y los mismos permisos.
+Servidor MCP en `POST /api/mcp` (transporte Streamable HTTP, sin sesiones), con las mismas 18 herramientas del asistente y los mismos permisos.
 
 - **Token personal:** cada usuario lo crea en Ajustes (máx. 10 activos). Se muestra una sola vez; en la base solo se guarda su hash. Sirve únicamente en `/api/mcp` (no en el resto de la API) y se puede revocar. Al borrar al usuario, sus tokens dejan de funcionar.
 - **Claude Code:**
@@ -71,7 +71,7 @@ Servidor MCP en `POST /api/mcp` (transporte Streamable HTTP, sin sesiones), con 
 - **Claude Desktop:** mediante el puente `mcp-remote` (paquete de terceros, requiere Node.js). La pantalla de Ajustes genera el JSON. Los pasos exactos pueden variar según la versión de la aplicación.
 - **claude.ai (web):** **no soportado todavía.** Exige publicar el CRM en internet con HTTPS y un inicio de sesión OAuth que no está implementado.
 - **Verificado con Claude Code real (2026-10-22):** `claude mcp add --transport http …` conecta (`✔ Connected` en `claude mcp list`), lista y crea registros con los permisos del dueño del token, y las herramientas que modifican (`update_*`) quedan bloqueadas hasta que el usuario las autoriza en Claude Code (p. ej. `--allowedTools` o el aviso de permisos): sin esa autorización no se cambia nada. También con el cliente oficial del SDK de MCP sobre HTTP real. **Claude Desktop también verificado (2026-10-22)**, versión 3.6 de la tienda de Microsoft, con el JSON que genera Ajustes:
-  - Aparece en *Configuración → Desarrollador* como servidor local «En ejecución»; el puente `mcp-remote` inicializa, lista las 16 herramientas y ejecuta consultas.
+  - Aparece en *Configuración → Desarrollador* como servidor local «En ejecución»; el puente `mcp-remote` inicializa, lista las herramientas y ejecuta consultas.
   - **Consultar** se ejecuta sin preguntar; **crear** y **actualizar** muestran el aviso de permiso de Desktop; **borrar** lo rechazó el propio asistente de Desktop por ser irreversible (es una negativa del modelo, no un control: no hay que darla por segura).
   - **Dónde está el archivo de configuración:** con la versión de la tienda no es `%APPDATA%\Claude\…`, sino `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc\claude_desktop_config.json`. Lo más seguro es usar *Desarrollador → Editar configuración*, que abre el archivo correcto. Ese archivo ya contiene las preferencias de la aplicación: hay que **añadir** `mcpServers`, no reemplazarlo, y editarlo con Desktop cerrado del todo (bandeja del sistema → Salir) porque la aplicación lo reescribe.
 

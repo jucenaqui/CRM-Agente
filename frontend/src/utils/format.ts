@@ -1,13 +1,4 @@
-import type { ActivityType, DealStage, Role } from '../api/types';
-
-export const STAGE_LABELS: Record<DealStage, string> = {
-  lead: 'Lead',
-  qualified: 'Calificado',
-  proposal: 'Propuesta',
-  negotiation: 'Negociación',
-  won: 'Ganado',
-  lost: 'Perdido',
-};
+import type { ActivityType, Role } from '../api/types';
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   call: 'Llamada',

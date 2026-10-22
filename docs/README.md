@@ -7,6 +7,11 @@ Estado: **v1.0.0 terminada** (2026-10-22). Resumen y pendientes en [RELEASE_NOTE
 2. [../README.md](../README.md): instalación, arranque, variables de entorno y credenciales de ejemplo.
 3. [CONTRACT.md](CONTRACT.md): contrato de API y dominio que siguieron todos los agentes.
 
+## Para entender el producto
+| Documento | Contenido |
+|---|---|
+| [CRM_CONCEPTS.md](CRM_CONCEPTS.md) | Qué es cada elemento del CRM, el embudo configurable y cómo se calcula cada métrica |
+
 ## Producto y planificación (PM)
 | Documento | Contenido |
 |---|---|

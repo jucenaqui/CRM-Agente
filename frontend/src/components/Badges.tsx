@@ -1,8 +1,16 @@
 import type { ActivityType, DealStage } from '../api/types';
-import { ACTIVITY_LABELS, STAGE_LABELS } from '../utils/format';
+import { ACTIVITY_LABELS } from '../utils/format';
+import { usePipeline } from '../utils/pipeline';
 
+/** Etapa con su color como punto y el nombre en texto normal (el texto nunca lleva el color de los datos). */
 export function StageBadge({ stage }: { stage: DealStage }) {
-  return <span className={`badge stage-${stage}`}>{STAGE_LABELS[stage] ?? stage}</span>;
+  const p = usePipeline();
+  return (
+    <span className="badge badge-stage">
+      <i className="stage-dot" style={{ background: p.stageColor(stage) }} aria-hidden="true" />
+      {p.stageName(stage)}
+    </span>
+  );
 }
 
 export function ActivityTypeBadge({ type }: { type: ActivityType }) {

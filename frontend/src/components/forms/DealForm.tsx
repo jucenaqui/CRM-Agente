@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { dealsApi } from '../../api/endpoints';
-import { DEAL_STAGES, type Company, type Contact, type Deal, type DealStage } from '../../api/types';
+import type { Company, Contact, Deal, DealStage } from '../../api/types';
 import { SelectField, TextField } from '../Form';
 import { FormModal } from './FormModal';
-import { STAGE_LABELS, fromInputToIso, toDateInput } from '../../utils/format';
+import { formatDate, fromInputToIso, toDateInput } from '../../utils/format';
+import { usePipeline } from '../../utils/pipeline';
 import { maxLen, required, type Errors } from '../../utils/validation';
 import { contactFullName, idOrNull } from '../../utils/lookups';
 
@@ -19,10 +20,17 @@ interface Props {
 
 const CURRENCIES = ['USD', 'EUR', 'MXN', 'COP', 'ARS', 'CLP', 'PEN', 'BRL', 'GBP'];
 
-const empty = { title: '', value: '', currency: 'USD', stage: 'lead' as DealStage, companyId: '', contactId: '', expectedCloseDate: '' };
+const empty = { title: '', value: '', currency: 'USD', stage: '' as DealStage, companyId: '', contactId: '', expectedCloseDate: '', sourceId: '', lostReasonId: '' };
 type F = typeof empty;
 
+/** Si el deal usa una opción ya archivada, se sigue mostrando (deshabilitada) en lugar de desaparecer. */
+function withCurrent(options: { id: number; name: string; archived: boolean }[], current: string) {
+  if (current === '' || options.some((o) => String(o.id) === current)) return options;
+  return [...options, { id: Number(current), name: 'Opción archivada', archived: true }];
+}
+
 export function DealForm({ open, deal, companies, contacts, defaults, onClose, onSaved }: Props) {
+  const pipeline = usePipeline();
   const [f, setF] = useState<F>(empty);
   const [errors, setErrors] = useState<Errors<F>>({});
 
@@ -39,10 +47,12 @@ export function DealForm({ open, deal, companies, contacts, defaults, onClose, o
             companyId: deal.companyId != null ? String(deal.companyId) : '',
             contactId: deal.contactId != null ? String(deal.contactId) : '',
             expectedCloseDate: toDateInput(deal.expectedCloseDate),
+            sourceId: deal.sourceId != null ? String(deal.sourceId) : '',
+            lostReasonId: deal.lostReasonId != null ? String(deal.lostReasonId) : '',
           }
         : {
             ...empty,
-            stage: defaults?.stage ?? 'lead',
+            stage: defaults?.stage ?? pipeline.defaultStage,
             companyId: defaults?.companyId != null ? String(defaults.companyId) : '',
             contactId: defaults?.contactId != null ? String(defaults.contactId) : '',
           },
@@ -69,6 +79,9 @@ export function DealForm({ open, deal, companies, contacts, defaults, onClose, o
       value: Number(f.value),
       currency: f.currency,
       stage: f.stage,
+      sourceId: idOrNull(f.sourceId),
+      // el motivo sólo tiene sentido en una etapa perdida
+      lostReasonId: pipeline.stageKind(f.stage) === 'lost' ? idOrNull(f.lostReasonId) : null,
       companyId: idOrNull(f.companyId),
       contactId: idOrNull(f.contactId),
       expectedCloseDate: fromInputToIso(f.expectedCloseDate),
@@ -98,13 +111,36 @@ export function DealForm({ open, deal, companies, contacts, defaults, onClose, o
         ))}
       </SelectField>
       <SelectField label="Etapa" value={f.stage} onChange={set('stage')}>
-        {DEAL_STAGES.map((s) => (
-          <option key={s} value={s}>
-            {STAGE_LABELS[s]}
+        {pipeline.stages.map((s) => (
+          <option key={s.key} value={s.key}>
+            {s.name}
+          </option>
+        ))}
+      </SelectField>
+      {pipeline.stageKind(f.stage) === 'lost' && (
+        <SelectField label="Motivo de pérdida" value={f.lostReasonId} onChange={set('lostReasonId')}>
+          <option value="">— Sin especificar —</option>
+          {withCurrent(pipeline.lossReasons, f.lostReasonId).map((o) => (
+            <option key={o.id} value={o.id} disabled={o.archived}>
+              {o.name}
+            </option>
+          ))}
+        </SelectField>
+      )}
+      <SelectField label="Origen del lead" value={f.sourceId} onChange={set('sourceId')}>
+        <option value="">— Sin especificar —</option>
+        {withCurrent(pipeline.leadSources, f.sourceId).map((o) => (
+          <option key={o.id} value={o.id} disabled={o.archived}>
+            {o.name}
           </option>
         ))}
       </SelectField>
       <TextField label="Cierre esperado" type="date" value={f.expectedCloseDate} onChange={set('expectedCloseDate')} />
+      {deal?.closedAt && (
+        <p className="muted small span-2">
+          Cerrado el {formatDate(deal.closedAt)} (la fecha se registra sola al pasar el deal a una etapa ganada o perdida).
+        </p>
+      )}
       <SelectField label="Empresa" value={f.companyId} onChange={set('companyId')}>
         <option value="">— Ninguna —</option>
         {companies.map((c) => (

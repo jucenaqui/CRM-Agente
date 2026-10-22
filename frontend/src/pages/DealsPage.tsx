@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../api/endpoints';
-import { DEAL_STAGES, type Deal, type DealStage } from '../api/types';
+import type { Deal, DealStage } from '../api/types';
 import { useAsync, useList } from '../utils/hooks';
 import { PageHeader, SortHeader, StageBadge } from '../components/Badges';
 import { SearchInput } from '../components/Form';
@@ -11,7 +11,9 @@ import { DealForm } from '../components/forms/DealForm';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { errorMessage } from '../api/client';
-import { STAGE_LABELS, formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoney } from '../utils/format';
+import { usePipeline } from '../utils/pipeline';
+import { LostReasonDialog } from '../components/LostReasonDialog';
 import { LOOKUP_PAGE_SIZE, useLookups, type Lookups } from '../utils/lookups';
 
 interface Filters {
@@ -26,6 +28,7 @@ interface CommonProps {
 }
 
 function DealsTable({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
+  const { stages } = usePipeline();
   const list = useList<Deal, Filters>((p) => dealsApi.list(p), { initialSort: 'createdAt', initialOrder: 'desc' });
   const { reload } = list;
   useEffect(() => {
@@ -42,9 +45,9 @@ function DealsTable({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
           onChange={(e) => list.setFilters({ stage: (e.target.value || undefined) as DealStage | undefined })}
         >
           <option value="">Todas las etapas</option>
-          {DEAL_STAGES.map((s) => (
-            <option key={s} value={s}>
-              {STAGE_LABELS[s]}
+          {stages.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.name}
             </option>
           ))}
         </select>
@@ -118,6 +121,9 @@ function DealsTable({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
 
 function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
   const toast = useToast();
+  const pipeline = usePipeline();
+  const { stages } = pipeline;
+  const [pendingLost, setPendingLost] = useState<{ deal: Deal; stage: DealStage } | null>(null);
   const { data, loading, error, reload, setData } = useAsync(
     () => dealsApi.list({ page: 1, pageSize: LOOKUP_PAGE_SIZE, sort: 'updatedAt', order: 'desc' }),
     [refreshKey],
@@ -126,19 +132,24 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
   const [overStage, setOverStage] = useState<DealStage | null>(null);
   const [movingId, setMovingId] = useState<number | null>(null);
 
-  const move = async (deal: Deal, stage: DealStage) => {
+  const move = async (deal: Deal, stage: DealStage, lostReasonId?: number | null) => {
     if (deal.stage === stage) return;
+    // Al perder un deal se pregunta el motivo (alimenta el informe de «por qué perdemos»).
+    if (pipeline.stageKind(stage) === 'lost' && lostReasonId === undefined) {
+      setPendingLost({ deal, stage });
+      return;
+    }
     const prevStage = deal.stage;
     const patch = (s: DealStage) =>
       setData((prev) => (prev ? { ...prev, data: prev.data.map((x) => (x.id === deal.id ? { ...x, stage: s } : x)) } : prev));
     patch(stage); // actualización optimista
     setMovingId(deal.id);
     try {
-      const updated = await dealsApi.moveStage(deal.id, stage);
+      const updated = await dealsApi.moveStage(deal.id, stage, lostReasonId);
       if (updated && typeof updated === 'object') {
         setData((prev) => (prev ? { ...prev, data: prev.data.map((x) => (x.id === deal.id ? { ...x, ...updated } : x)) } : prev));
       }
-      toast.success(`"${deal.title}" movido a ${STAGE_LABELS[stage]}`);
+      toast.success(`"${deal.title}" movido a ${pipeline.stageName(stage)}`);
     } catch (e) {
       patch(prevStage);
       toast.error(errorMessage(e));
@@ -160,14 +171,15 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
         </p>
       )}
       <div className="kanban" role="list" aria-label="Pipeline de deals">
-        {DEAL_STAGES.map((stage, idx) => {
+        {stages.map((st, idx) => {
+          const stage = st.key;
           const items = deals.filter((d) => d.stage === stage);
           const total = items.reduce((a, d) => a + (Number(d.value) || 0), 0);
           return (
             <section
               key={stage}
               role="listitem"
-              aria-label={`Etapa ${STAGE_LABELS[stage]}`}
+              aria-label={`Etapa ${st.name}`}
               className={`kanban-col${overStage === stage ? ' is-over' : ''}`}
               onDragOver={(e) => {
                 if (dragId == null) return;
@@ -187,9 +199,9 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
                 if (deal) void move(deal, stage);
               }}
             >
-              <header className={`kanban-head stage-border-${stage}`}>
+              <header className="kanban-head" style={{ borderTopColor: st.color }}>
                 <div>
-                  <h3>{STAGE_LABELS[stage]}</h3>
+                  <h3>{st.name}</h3>
                   <span className="muted small">{formatMoney(total)}</span>
                 </div>
                 <span className="count-pill">{items.length}</span>
@@ -226,7 +238,7 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
                         type="button"
                         className="icon-btn"
                         disabled={idx === 0 || movingId === d.id}
-                        onClick={() => move(d, DEAL_STAGES[idx - 1]!)}
+                        onClick={() => move(d, stages[idx - 1]!.key)}
                         aria-label={`Mover "${d.title}" a la etapa anterior`}
                         title="Etapa anterior"
                       >
@@ -241,8 +253,8 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
                       <button
                         type="button"
                         className="icon-btn"
-                        disabled={idx === DEAL_STAGES.length - 1 || movingId === d.id}
-                        onClick={() => move(d, DEAL_STAGES[idx + 1]!)}
+                        disabled={idx === stages.length - 1 || movingId === d.id}
+                        onClick={() => move(d, stages[idx + 1]!.key)}
                         aria-label={`Mover "${d.title}" a la etapa siguiente`}
                         title="Etapa siguiente"
                       >
@@ -256,6 +268,17 @@ function DealsKanban({ lookups, onEdit, onDelete, refreshKey }: CommonProps) {
           );
         })}
       </div>
+      <LostReasonDialog
+        open={pendingLost !== null}
+        dealTitle={pendingLost?.deal.title ?? ''}
+        reasons={pipeline.lossReasons}
+        onCancel={() => setPendingLost(null)}
+        onConfirm={(reasonId) => {
+          const p = pendingLost;
+          setPendingLost(null);
+          if (p) void move(p.deal, p.stage, reasonId);
+        }}
+      />
     </>
   );
 }

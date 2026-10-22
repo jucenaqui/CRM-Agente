@@ -1493,3 +1493,308 @@ section.card + section.card {
 .agent-confirm:not(.pending) .agent-confirm-changes {
   margin: 4px 0 0;
 }
+
+/* ---------- Embudo configurable ---------- */
+.badge-stage {
+  gap: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ---------- Métricas de ventas ---------- */
+.metrics {
+  margin-top: 28px;
+}
+.metrics > .kpi-grid,
+.metrics .kpi-grid {
+  margin-bottom: 16px;
+}
+.metrics-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.metrics-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.metrics-head p {
+  margin: 2px 0 0;
+}
+.metrics-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.metrics-filters select {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 0 8px;
+}
+.metrics .card {
+  margin-bottom: 16px;
+}
+.metrics .grid-2 {
+  align-items: start;
+}
+.metrics-hint {
+  margin: -4px 0 12px;
+}
+.kpi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.is-loading {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+/* Gráfico de columnas: una serie, un color, barras finas con el extremo redondeado */
+.chart {
+  position: relative;
+  height: 220px;
+  margin: 12px 0 8px 36px;
+  padding-bottom: 22px;
+}
+.chart-grid {
+  position: absolute;
+  inset: 0 0 22px 0;
+}
+.chart-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--border);
+}
+.chart-gridline span {
+  position: absolute;
+  left: -36px;
+  top: -8px;
+  width: 30px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.chart-cols {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 4px;
+}
+.chart-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  font: inherit;
+  color: inherit;
+}
+.chart-col:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.chart-bar {
+  width: 60%;
+  max-width: 24px;
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--primary);
+  margin-bottom: 22px;
+  transition: filter 0.1s;
+}
+.chart-col.is-active .chart-bar {
+  filter: brightness(1.15);
+}
+.chart-xlabel {
+  position: absolute;
+  bottom: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.chart-value {
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  /* the bar column is bottom-aligned, so this sits right above the tallest bar */
+  position: relative;
+  z-index: 1;
+}
+.chart-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.chart-tip strong {
+  font-size: 14px;
+  color: var(--text);
+}
+.chart-col:nth-child(-n + 2) .chart-tip {
+  left: 0;
+  transform: none;
+}
+.chart-col:nth-last-child(-n + 2) .chart-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.chart-table {
+  margin-top: 8px;
+}
+.chart-table summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Barras horizontales (una serie) */
+.hbar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+  min-width: 60px;
+}
+.hbar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+}
+.bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.bar-list li {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(80px, 2fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.bar-list-value {
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.funnel-bar-cell {
+  width: 30%;
+}
+.funnel-table td .stage-dot {
+  display: inline-block;
+}
+@media (max-width: 640px) {
+  .chart {
+    height: 180px;
+  }
+  .bar-list li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .funnel-bar-cell {
+    display: none;
+  }
+}
+
+/* ---------- Editor del embudo (Ajustes) ---------- */
+.pipeline-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.pipeline-row {
+  display: grid;
+  grid-template-columns: 36px minmax(120px, 1fr) 110px 90px auto;
+  align-items: center;
+  gap: 8px;
+}
+.pipeline-row.option-row {
+  grid-template-columns: minmax(120px, 1fr) auto;
+}
+.pipeline-row input:not([type='color']),
+.pipeline-row select {
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 0 8px;
+  min-width: 0;
+}
+.pipeline-color {
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.pipeline-prob {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pipeline-prob input {
+  width: 64px;
+}
+.pipeline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: end;
+}
+@media (max-width: 760px) {
+  .pipeline-row {
+    grid-template-columns: 36px 1fr 1fr;
+  }
+  .pipeline-row .pipeline-actions {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .pipeline-row.option-row {
+    grid-template-columns: 1fr;
+  }
+}

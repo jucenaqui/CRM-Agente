@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { dashboardApi } from '../api/endpoints';
-import { DEAL_STAGES, type DashboardStats } from '../api/types';
+import type { DashboardStats } from '../api/types';
 import { useAsync } from '../utils/hooks';
 import { EmptyState, ErrorState, Loading } from '../components/States';
 import { ActivityTypeBadge, PageHeader } from '../components/Badges';
-import { STAGE_LABELS, formatDateTime, formatMoney, isOverdue } from '../utils/format';
+import { formatDateTime, formatMoney, isOverdue } from '../utils/format';
+import { usePipeline } from '../utils/pipeline';
+import { MetricsPanel } from '../components/MetricsPanel';
 import { useAuth } from '../auth/AuthContext';
 
 function Kpi({ label, value, to, accent }: { label: string; value: string; to?: string; accent?: string }) {
@@ -24,8 +26,9 @@ function Kpi({ label, value, to, accent }: { label: string; value: string; to?: 
 }
 
 function Funnel({ stats }: { stats: DashboardStats }) {
-  const byStage = new Map(stats.dealsByStage.map((s) => [s.stage, s]));
-  const rows = DEAL_STAGES.map((stage) => byStage.get(stage) ?? { stage, count: 0, value: 0 });
+  const p = usePipeline();
+  // Una fila por etapa del embudo del cliente, en su orden (el servidor ya las envía así).
+  const rows = stats.dealsByStage;
   const maxCount = Math.max(1, ...rows.map((r) => r.count));
   const totalCount = rows.reduce((a, r) => a + r.count, 0);
 
@@ -37,18 +40,19 @@ function Funnel({ stats }: { stats: DashboardStats }) {
     <ul className="funnel" aria-label="Deals por etapa">
       {rows.map((r) => {
         const pct = Math.round((r.count / maxCount) * 100);
+        const name = r.name ?? p.stageName(r.stage);
         return (
           <li key={r.stage} className="funnel-row">
-            <span className="funnel-label">{STAGE_LABELS[r.stage]}</span>
+            <span className="funnel-label">{name}</span>
             <div
               className="funnel-track"
               role="meter"
-              aria-label={`${STAGE_LABELS[r.stage]}: ${r.count} deals`}
+              aria-label={`${name}: ${r.count} deals`}
               aria-valuemin={0}
               aria-valuemax={maxCount}
               aria-valuenow={r.count}
             >
-              <div className={`funnel-bar stage-bg-${r.stage}`} style={{ width: `${Math.max(pct, r.count > 0 ? 4 : 0)}%` }} />
+              <div className="funnel-bar" style={{ width: `${Math.max(pct, r.count > 0 ? 4 : 0)}%`, background: r.color ?? p.stageColor(r.stage) }} />
             </div>
             <span className="funnel-count">{r.count}</span>
             <span className="funnel-value muted">{formatMoney(r.value)}</span>
@@ -106,6 +110,7 @@ export function DashboardPage() {
               )}
             </section>
           </div>
+          <MetricsPanel />
         </>
       )}
     </>

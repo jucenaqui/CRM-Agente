@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ROLE_LABELS, initials } from '../utils/format';
 import { AgentPanel } from './AgentPanel';
+import { PipelineProvider } from '../utils/pipeline';
 import { ErrorBoundary } from './ErrorBoundary';
 
 function Icon({ d }: { d: string }) {
@@ -54,6 +55,7 @@ export function Layout({ children }: { children?: ReactNode }) {
   };
 
   return (
+    <PipelineProvider>
     <div className={`app-shell${open ? ' nav-open' : ''}`}>
       <aside className="sidebar" aria-label="Navegación principal">
         <div className="brand">
@@ -99,5 +101,6 @@ export function Layout({ children }: { children?: ReactNode }) {
       </div>
       <AgentPanel />
     </div>
+    </PipelineProvider>
   );
 }

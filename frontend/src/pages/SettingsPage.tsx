@@ -3,6 +3,7 @@ import { agentApi, type ApiToken, type KeyPolicy } from '../api/agent';
 import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/Badges';
+import { PipelineSettings } from '../components/PipelineSettings';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ErrorState, Loading } from '../components/States';
 import { useToast } from '../components/Toast';
@@ -48,7 +49,8 @@ export function SettingsPage() {
   const { isAdmin } = useAuth();
   return (
     <>
-      <PageHeader title="Ajustes" subtitle="Asistente IA y conexión con tus aplicaciones." />
+      <PageHeader title="Ajustes" subtitle="Embudo de ventas, asistente IA y conexión con tus aplicaciones." />
+      {isAdmin && <PipelineSettings />}
       {isAdmin && <AssistantSection />}
       <McpSection />
     </>

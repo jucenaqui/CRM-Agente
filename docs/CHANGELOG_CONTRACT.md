@@ -60,3 +60,28 @@ Nuevas rutas (todas con JWT salvo `/api/mcp`):
 ## 2026-10-22 — Asistente IA: la confirmación cubre también las modificaciones
 - `update_company|contact|deal|activity|user` y `move_deal_stage` exigen confirmación igual que `delete_record`. `confirm_required` añade `action` (`delete` | `update`) y, en las modificaciones, `changes: [{field, from, to}]` solo con los campos que realmente cambian (valores normalizados: `acme.com` = `https://acme.com`; etapas y tipos con el nombre de la interfaz; contraseña enmascarada). Un cambio que no modifica nada se ejecuta sin preguntar. Crear sigue sin confirmación.
 - MCP: `update_*` y `move_deal_stage` se marcan `destructiveHint: true`.
+
+## 2026-10-22 — Embudo configurable, campos de seguimiento y métricas de ventas
+El valor `stage` de un deal ya no es una lista fija: es la **clave** de una etapa del embudo del cliente (por defecto `lead`, `qualified`, `proposal`, `negotiation`, `won`, `lost`). Las claves no cambian al renombrar una etapa.
+
+Rutas nuevas (bajo `/api/pipeline`, lectura para cualquier usuario autenticado, escritura solo admin):
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | /api/pipeline | `{stages, leadSources, lossReasons}` en una llamada |
+| GET/POST | /api/pipeline/stages | listar / crear `{name, kind?, probability?, color?}` (`kind`: `open` \| `won` \| `lost`) |
+| PATCH | /api/pipeline/stages/:id | `{name?, kind?, probability?, color?}` |
+| PUT | /api/pipeline/stages/order | `{ids}` con todas las etapas; las abiertas deben ir antes que ganadas/perdidas |
+| DELETE | /api/pipeline/stages/:id?moveTo=ID | 204. Si hay deals en la etapa: 409 `STAGE_IN_USE` (`details.deals`) hasta indicar `moveTo`. 409 `LAST_OF_KIND` si fuera la última abierta/ganada/perdida |
+| GET/POST | /api/pipeline/options/:kind | `kind`: `lead_source` \| `loss_reason`; `?includeArchived=1` en GET |
+| PUT | /api/pipeline/options/:kind/order | `{ids}` |
+| PATCH/DELETE | /api/pipeline/options/:kind/:id | renombrar / eliminar → `{result:'deleted'\|'archived'}` (archiva si algún deal la usa) |
+| GET | /api/deals/:id/history | cambios de etapa `{data:[{fromStage,toStage,changedAt,changedByName}]}` |
+| GET | /api/dashboard/metrics?period=30d\|90d\|12m\|all[&ownerId=] | métricas de ventas (ver `docs/CRM_CONCEPTS.md`); `byOwner` solo para administradores viendo a todo el equipo |
+
+Cambios en rutas existentes:
+- **Deal**: campos nuevos `closedAt` (solo lectura: lo fija el servidor al entrar/salir de una etapa ganada o perdida), `sourceId` y `lostReasonId` (este solo se conserva en etapas perdidas). `PATCH /api/deals/:id/stage` acepta `{stage, lostReasonId?}`. Filtro `?sourceId=` y orden por `closedAt`. `stage` inválido sigue dando 400.
+- **Activity**: campo `completedAt` (solo lectura).
+- `GET /api/dashboard/stats`: cada elemento de `dealsByStage` añade `name`, `kind` y `color`; `openDealsValue` y `wonDealsValue` suman por tipo de etapa (abierta / ganada).
+- Asistente y MCP: herramientas nuevas `get_pipeline` y `get_metrics` (18 en total); `stage` pasa a ser texto libre validado por el servidor; `create_deal`/`update_deal`/`move_deal_stage` aceptan `sourceId` / `lostReasonId`.
+- Migración 4: tablas `pipeline_stages`, `crm_options`, `deal_stage_history`; `deals` se reconstruye sin la restricción de etapas fijas (probada sobre una copia de la base real); `activities.completedAt`.
