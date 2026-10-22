@@ -29,7 +29,7 @@ export function mockFetch(routes: Record<string, Handler>) {
 
 export function renderApp(path = '/') {
   return render(
-    <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
         <ToastProvider>
           <AppRoutes />

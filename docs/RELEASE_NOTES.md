@@ -50,9 +50,6 @@ Comandos ejecutados desde la raíz en PowerShell con **Node 22.12.0 / npm 10.9.0
 ## Pendientes (no bloquean la release)
 | ID | Severidad | Descripción | Dueño |
 |---|---|---|---|
-| SEC-003 | Media | Migrar `react-router-dom` a 7.x. `npm audit` del frontend muestra 2 avisos moderados. La redirección post-login ya está acotada a rutas internas. | Frontend |
-| SEC-004 | Media | Sin `JWT_SECRET` y fuera de producción se usa un secreto fijo de desarrollo. Conviene añadir un `console.warn` o exigir el secreto. | Backend |
-| SEC-005 | Media | El seed crea credenciales conocidas. Debería abortar si `NODE_ENV=production`. | Backend |
 | SEC-006..011 | Baja | Riesgos aceptados: enumeración de emails en el registro, token en `localStorage`, sin revocación de JWT, límite de 72 bytes de bcrypt y rate limit en memoria. | — |
 | BUG-003 | Baja | El Dashboard no tolera una respuesta `stats` malformada. | Frontend |
 | BUG-002 | Entorno | En la máquina, la carpeta nvm `v22.12.0` contiene ahora Node 24.20 con un npm 11.19 dañado: `npm install`, `npm ls` y `npm audit` fallan con "Class extends value undefined…" (`npm run` y `npm test` sí funcionan). Para repararlo: `nvm uninstall 22.12.0 && nvm install 22.12.0 && nvm use 22.12.0`. El backend funciona con Node 22 (`better-sqlite3`) y con Node 24 (fallback a `node:sqlite`). | Usuario |
@@ -65,3 +62,6 @@ npm install
 npm run seed
 npm run dev          # http://localhost:5173  ·  admin@crm.local / Admin123!
 ```
+
+## Actualización 2026-10-22: seguridad
+SEC-003 (react-router 7, `npm audit` sin vulnerabilidades), SEC-004 (aviso de `JWT_SECRET` ausente) y SEC-005 (el seed no corre en producción salvo `SEED_ALLOW_PRODUCTION=1`) quedaron resueltos. Detalle en `docs/security/FINDINGS.md`.

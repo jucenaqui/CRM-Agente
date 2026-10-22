@@ -1,7 +1,17 @@
 /* Seed script: `npm run seed`. Idempotent: upserts users, inserts sample data only if empty. */
-import { getDbPath, loadEnv } from './config.js';
+import { getDbPath, isProduction, loadEnv } from './config.js';
 
 loadEnv();
+
+// The seed creates/resets admin@crm.local and sales@crm.local with publicly known passwords:
+// never on a production install unless explicitly forced (e.g. a throw-away demo environment).
+if (isProduction() && process.env.SEED_ALLOW_PRODUCTION !== '1') {
+  console.error(
+    'Seed cancelado: NODE_ENV=production y el seed crea usuarios con contraseñas conocidas (admin@crm.local / Admin123!).\n' +
+      'Crea el primer administrador registrándote en la aplicación. Para forzarlo en un entorno de demostración: SEED_ALLOW_PRODUCTION=1.',
+  );
+  process.exit(1);
+}
 
 const { getDb, nowIso } = await import('./db.js');
 const { findUserByEmail, hashPassword, insertUser } = await import('./lib/users.js');

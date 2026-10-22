@@ -31,7 +31,7 @@ npm run dev
 | `admin@crm.local` | `Admin123!` | admin |
 | `sales@crm.local` | `Sales123!` | sales |
 
-Si `JWT_SECRET` no está definido, en desarrollo se usa un secreto fijo de desarrollo. En `NODE_ENV=production` el arranque falla sin un secreto de ≥ 32 caracteres. No ejecutes el seed en producción, porque crea credenciales conocidas.
+Si `JWT_SECRET` no está definido, en desarrollo se usa un secreto fijo de desarrollo. En `NODE_ENV=production` el arranque falla sin un secreto de ≥ 32 caracteres. El seed se niega a ejecutarse con `NODE_ENV=production` (crea credenciales conocidas); sólo se fuerza con `SEED_ALLOW_PRODUCTION=1` en un entorno de demostración.
 
 Si no ejecutas el seed, el **primer usuario que se registre** será `admin`; los siguientes serán `sales`.
 

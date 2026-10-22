@@ -45,10 +45,23 @@ export function getDbPath(): string {
   return path.isAbsolute(p) ? p : path.resolve(BACKEND_ROOT, p);
 }
 
-/** Fails fast on insecure production configuration. */
+/** Message to show when the (publicly known) development JWT secret is in use, else null. */
+export function jwtSecretWarning(): string | null {
+  if (isProduction() || isTest()) return null;
+  const s = process.env.JWT_SECRET;
+  if (s && s.length > 0) return null;
+  return (
+    'AVISO: JWT_SECRET no está definido y se usa el secreto de desarrollo que está en el código fuente; ' +
+    'cualquiera podría firmar tokens válidos. Define JWT_SECRET en backend/.env (>= 32 caracteres aleatorios) si este servidor es accesible por otras personas.'
+  );
+}
+
+/** Fails fast on insecure production configuration; warns about insecure development defaults. */
 export function assertConfig(): void {
   if (isProduction()) {
     const s = process.env.JWT_SECRET;
     if (!s || s.length < 32) throw new Error('JWT_SECRET (>= 32 chars) is required in production');
   }
+  const warning = jwtSecretWarning();
+  if (warning) console.warn(warning);
 }
