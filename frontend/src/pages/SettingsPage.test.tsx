@@ -85,9 +85,48 @@ describe('SettingsPage', () => {
         }),
     });
     renderApp('/settings');
-    expect(await screen.findByText(/no tiene saldo/i)).toBeInTheDocument();
-    expect(screen.getByText(/se usa la clave de tu proveedor/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$2\.50 de \$10\.00/)).toBeInTheDocument();
+    expect(await screen.findByText(/Mientras tanto se usa la clave de tu proveedor/i)).toBeInTheDocument();
+    // El texto de «quién paga» no se contradice con la alerta: es el respaldo, no la clave del cliente.
+    expect(screen.getByText(/la clave de tu proveedor \(respaldo: tu clave no tiene saldo\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$2\.500 de \$10\.00|\$2\.50 de \$10\.00/)).toBeInTheDocument();
+  });
+
+  it('says nobody pays when the customer key is invalid and there is no fallback', async () => {
+    routes(adminUser, {
+      'GET /api/agent/settings': () =>
+        jsonResponse({
+          ...baseSettings,
+          effectiveSource: 'customer',
+          customerKey: { configured: true, last4: 'WXYZ', status: 'invalid', statusAt: null },
+        }),
+    });
+    renderApp('/settings');
+    expect(await screen.findByText(/nadie: tu clave no es válida y el asistente no responderá/i)).toBeInTheDocument();
+    expect(screen.getByText(/hasta entonces el asistente no responderá/i)).toBeInTheDocument();
+  });
+
+  it('shows usage with a total row, thousands separators and a per-user breakdown', async () => {
+    routes(adminUser, {
+      'GET /api/agent/usage': () =>
+        jsonResponse({
+          month: '2026-10',
+          totals: [
+            { source: 'customer', viaFallback: false, messages: 2, inputTokens: 11025, outputTokens: 91, costUsd: 0.016 },
+            { source: 'provider', viaFallback: true, messages: 2, inputTokens: 11488, outputTokens: 217, costUsd: 0.0184 },
+          ],
+          byUser: [{ userId: 1, name: 'Ana Admin', source: 'provider', viaFallback: true, costUsd: 0.0184, steps: 2 }],
+        }),
+    });
+    const user = userEvent.setup();
+    renderApp('/settings');
+    const table = (await screen.findByText('Tu clave de Anthropic', { selector: 'td' })).closest('table')!;
+    expect(within(table).getByText('11.025')).toBeInTheDocument(); // separador de miles
+    expect(within(table).getByText('Clave del proveedor (respaldo)')).toBeInTheDocument();
+    expect(within(table).getByText('Total')).toBeInTheDocument();
+    expect(within(table).getByText('$0.034')).toBeInTheDocument();
+    const details = screen.getByText('Desglose por usuario').closest('details')!;
+    await user.click(screen.getByText('Desglose por usuario'));
+    expect(within(details).getByText('Ana Admin')).toBeInTheDocument();
   });
 
   it('hides the key form when the service always uses the provider key', async () => {

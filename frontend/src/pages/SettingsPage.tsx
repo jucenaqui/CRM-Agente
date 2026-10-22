@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { agentApi, type ApiToken, type KeyPolicy } from '../api/agent';
 import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -24,7 +24,25 @@ const KEY_STATUS: Record<string, { label: string; cls: string }> = {
   invalid: { label: 'No válida', cls: 'badge badge-bad' },
 };
 
-const usd = (n: number) => (n < 0.01 && n > 0 ? '< $0.01' : `$${n.toFixed(2)}`);
+/** Dinero con 3 decimales por debajo de 1 USD (los mensajes cuestan céntimos o menos). */
+const usd = (n: number) => (n === 0 ? '$0.00' : n < 1 ? `$${n.toFixed(3)}` : `$${n.toFixed(2)}`);
+const num = (n: number) => n.toLocaleString('es');
+
+type Settings = import('../api/agent').AgentSettings;
+
+/** Quién paga de verdad ahora mismo, teniendo en cuenta el estado de la clave del cliente. */
+function payerText(s: Settings): { text: string; problem: boolean } {
+  const bad = s.customerKey.status === 'exhausted' || s.customerKey.status === 'invalid';
+  if (s.effectiveSource === 'customer' && bad) {
+    const why = s.customerKey.status === 'exhausted' ? 'no tiene saldo' : 'no es válida';
+    return s.fallback.enabled && !s.fallback.capReached
+      ? { text: `la clave de tu proveedor (respaldo: tu clave ${why})`, problem: false }
+      : { text: `nadie: tu clave ${why} y el asistente no responderá hasta que la corrijas`, problem: true };
+  }
+  if (s.effectiveSource === 'customer') return { text: 'tu clave de Anthropic', problem: false };
+  if (s.effectiveSource === 'provider') return { text: 'la clave de tu proveedor', problem: false };
+  return { text: 'nadie: el asistente no está configurado', problem: true };
+}
 
 export function SettingsPage() {
   const { isAdmin } = useAuth();
@@ -41,6 +59,17 @@ function AssistantSection() {
   const toast = useToast();
   const settings = useAsync(() => agentApi.settings(), []);
   const usage = useAsync(() => agentApi.usage(), []);
+
+  // Los datos cambian mientras se usa el asistente: se recargan al volver a esta pestaña.
+  useEffect(() => {
+    const onFocus = () => {
+      settings.reload();
+      usage.reload();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -88,13 +117,8 @@ function AssistantSection() {
       ) : (
         <>
           <p className="muted">{POLICY_TEXT[s.policy]}</p>
-          <p>
-            <strong>Pagando ahora:</strong>{' '}
-            {s.effectiveSource === 'customer'
-              ? 'tu clave de Anthropic'
-              : s.effectiveSource === 'provider'
-                ? 'la clave de tu proveedor'
-                : 'ninguna (el asistente no está configurado)'}
+          <p className={payerText(s).problem ? 'text-danger' : undefined}>
+            <strong>Pagando ahora:</strong> {payerText(s).text}
           </p>
 
           {s.customerKey.status === 'exhausted' && (
@@ -104,7 +128,10 @@ function AssistantSection() {
             </div>
           )}
           {s.customerKey.status === 'invalid' && (
-            <div className="alert alert-error">Tu clave ya no es válida. Guarda una nueva.</div>
+            <div className="alert alert-error">
+              Tu clave ya no es válida. Guarda una nueva.
+              {s.fallback.enabled ? ' Mientras tanto se usa la clave de tu proveedor.' : ' Hasta entonces el asistente no responderá.'}
+            </div>
           )}
 
           {s.policy !== 'provider_only' && (
@@ -150,7 +177,7 @@ function AssistantSection() {
             </p>
           )}
 
-          <UsageTable usage={usage} />
+          <UsageTable usage={usage} onRefresh={() => { settings.reload(); usage.reload(); }} />
         </>
       )}
       <ConfirmDialog
@@ -165,15 +192,31 @@ function AssistantSection() {
   );
 }
 
-function UsageTable({ usage }: { usage: ReturnType<typeof useAsync<Awaited<ReturnType<typeof agentApi.usage>>>> }) {
+const PAYER_LABEL = (source: string, fallback: boolean) =>
+  source === 'customer' ? 'Tu clave de Anthropic' : fallback ? 'Clave del proveedor (respaldo)' : 'Clave del proveedor';
+
+function UsageTable({
+  usage,
+  onRefresh,
+}: {
+  usage: ReturnType<typeof useAsync<Awaited<ReturnType<typeof agentApi.usage>>>>;
+  onRefresh: () => void;
+}) {
   const u = usage.data;
   if (usage.error) return <ErrorState message={usage.error} onRetry={usage.reload} />;
   if (!u) return null;
-  const label = (source: string, fallback: boolean) =>
-    source === 'customer' ? 'Tu clave' : fallback ? 'Clave del proveedor (respaldo)' : 'Clave del proveedor';
+  const total = u.totals.reduce(
+    (a, t) => ({ requests: a.requests + t.messages, input: a.input + t.inputTokens, output: a.output + t.outputTokens, cost: a.cost + t.costUsd }),
+    { requests: 0, input: 0, output: 0, cost: 0 },
+  );
   return (
     <div className="settings-usage">
-      <h3>Consumo de {u.month}</h3>
+      <div className="card-title-row">
+        <h3>Consumo de {u.month}</h3>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onRefresh}>
+          Actualizar
+        </button>
+      </div>
       {u.totals.length === 0 ? (
         <p className="muted">Todavía no hay consumo este mes.</p>
       ) : (
@@ -182,35 +225,73 @@ function UsageTable({ usage }: { usage: ReturnType<typeof useAsync<Awaited<Retur
             <table className="table">
               <thead>
                 <tr>
-                  <th>Clave</th>
-                  <th>Respuestas</th>
-                  <th>Tokens (entrada / salida)</th>
+                  <th>Quién paga</th>
+                  <th>Peticiones a la IA</th>
+                  <th>Tokens de entrada</th>
+                  <th>Tokens de salida</th>
                   <th>Coste estimado</th>
                 </tr>
               </thead>
               <tbody>
                 {u.totals.map((t) => (
                   <tr key={`${t.source}-${t.viaFallback}`}>
-                    <td data-label="Clave">{label(t.source, t.viaFallback)}</td>
-                    <td data-label="Respuestas">{t.messages}</td>
-                    <td data-label="Tokens">
-                      {t.inputTokens} / {t.outputTokens}
-                    </td>
+                    <td data-label="Quién paga">{PAYER_LABEL(t.source, t.viaFallback)}</td>
+                    <td data-label="Peticiones">{num(t.messages)}</td>
+                    <td data-label="Entrada">{num(t.inputTokens)}</td>
+                    <td data-label="Salida">{num(t.outputTokens)}</td>
                     <td data-label="Coste">{usd(t.costUsd)}</td>
                   </tr>
                 ))}
+                {u.totals.length > 1 && (
+                  <tr>
+                    <td data-label="Quién paga">
+                      <strong>Total</strong>
+                    </td>
+                    <td data-label="Peticiones">
+                      <strong>{num(total.requests)}</strong>
+                    </td>
+                    <td data-label="Entrada">
+                      <strong>{num(total.input)}</strong>
+                    </td>
+                    <td data-label="Salida">
+                      <strong>{num(total.output)}</strong>
+                    </td>
+                    <td data-label="Coste">
+                      <strong>{usd(total.cost)}</strong>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          <p className="muted small">
+            Cada petición es un paso del asistente: una pregunta que consulta datos cuenta 2 o más. Costes estimados a precio de lista; la factura
+            real está en console.anthropic.com.
+          </p>
           <details>
-            <summary>Por usuario</summary>
-            <ul>
-              {u.byUser.map((r) => (
-                <li key={`${r.userId}-${r.source}-${r.viaFallback}`}>
-                  {r.name ?? 'Usuario eliminado'} — {label(r.source, r.viaFallback)}: {usd(r.costUsd)}
-                </li>
-              ))}
-            </ul>
+            <summary>Desglose por usuario</summary>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Usuario</th>
+                    <th>Quién paga</th>
+                    <th>Peticiones</th>
+                    <th>Coste estimado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {u.byUser.map((r) => (
+                    <tr key={`${r.userId}-${r.source}-${r.viaFallback}`}>
+                      <td data-label="Usuario">{r.name ?? 'Usuario eliminado'}</td>
+                      <td data-label="Quién paga">{PAYER_LABEL(r.source, r.viaFallback)}</td>
+                      <td data-label="Peticiones">{num(r.steps)}</td>
+                      <td data-label="Coste">{usd(r.costUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </details>
         </>
       )}
